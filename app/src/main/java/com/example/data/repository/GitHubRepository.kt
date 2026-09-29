@@ -183,6 +183,7 @@ class GitHubRepository(
 
             Result.success(repoEntities)
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             Log.e("GitHubRepository", "Error refreshing repositories", e)
             if (e is HttpException && e.code() == 401) {
                 tokenManager.setAuthError("Session expired or token revoked. Please sign in again.")
@@ -513,6 +514,7 @@ class GitHubRepository(
 
             newNotificationsCount
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             Log.e("GitHubRepository", "Sync failed", e)
             val isAuthError = e is HttpException && e.code() == 401
             val isNetwork = e is IOException
@@ -609,15 +611,32 @@ class GitHubRepository(
         NotificationHelper.postNotification(context, testNotif, preferencesRepository.notificationPrefs.value)
     }
 
-    private fun parseIsoDate(iso: String?): Long {
+    fun parseIsoDate(iso: String?): Long {
         if (iso.isNullOrBlank()) return System.currentTimeMillis()
-        return try {
-            val format = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
-                timeZone = TimeZone.getTimeZone("UTC")
-            }
-            format.parse(iso)?.time ?: System.currentTimeMillis()
-        } catch (_: Exception) {
-            System.currentTimeMillis()
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            try {
+                return java.time.Instant.parse(iso).toEpochMilli()
+            } catch (_: Exception) {}
+            try {
+                return java.time.OffsetDateTime.parse(iso).toInstant().toEpochMilli()
+            } catch (_: Exception) {}
         }
+        val patterns = arrayOf(
+            "yyyy-MM-dd'T'HH:mm:ss'Z'",
+            "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+            "yyyy-MM-dd'T'HH:mm:ssXXX",
+            "yyyy-MM-dd'T'HH:mm:ss.SSSXXX"
+        )
+        for (pattern in patterns) {
+            try {
+                val format = SimpleDateFormat(pattern, Locale.US).apply {
+                    timeZone = TimeZone.getTimeZone("UTC")
+                }
+                val parsed = format.parse(iso)
+                if (parsed != null) return parsed.time
+            } catch (_: Exception) {}
+        }
+        return System.currentTimeMillis()
     }
 }
+

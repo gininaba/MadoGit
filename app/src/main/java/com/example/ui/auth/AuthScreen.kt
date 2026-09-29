@@ -4,6 +4,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -85,6 +87,8 @@ fun AuthScreen(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding()
+            .navigationBarsPadding()
             .padding(horizontal = 20.dp)
             .verticalScroll(scrollState),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -442,7 +446,8 @@ fun AuthScreen(
                                 return@Button
                             }
                             viewModel.saveOAuthConfiguration(oauthClientId, oauthClientSecret, oauthRedirectUri)
-                            val authorizeUrl = "https://github.com/login/oauth/authorize?client_id=${oauthClientId.trim()}&scope=repo,notifications,workflow,read:user&redirect_uri=${oauthRedirectUri.trim()}"
+                            val oauthState = viewModel.generateOAuthState()
+                            val authorizeUrl = "https://github.com/login/oauth/authorize?client_id=${oauthClientId.trim()}&scope=repo,notifications,workflow,read:user&redirect_uri=${oauthRedirectUri.trim()}&state=$oauthState"
                             openExternalUrl(context, authorizeUrl)
                         },
                         colors = ButtonDefaults.buttonColors(

@@ -58,11 +58,12 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIntent(intent: Intent?) {
         val data = intent?.data ?: return
-        // Check for OAuth redirect: ghnotifier://oauth/callback?code=...
+        // Check for OAuth redirect: ghnotifier://oauth/callback?code=...&state=...
         if (data.scheme == "ghnotifier" && data.host == "oauth" && data.path == "/callback") {
             val code = data.getQueryParameter("code")
+            val state = data.getQueryParameter("state")
             if (!code.isNullOrBlank()) {
-                viewModel.handleOAuthCode(code) { success, error ->
+                viewModel.handleOAuthCode(code, state) { success, error ->
                     if (success) {
                         Toast.makeText(this, "GitHub connected successfully!", Toast.LENGTH_SHORT).show()
                     } else {
@@ -73,3 +74,4 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+

@@ -1,21 +1,59 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# Proguard & R8 Rules for MadoGit (Production Release)
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Preserve source file and line numbers for crash reporting and debugging
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Preserve Annotations and Generic Signatures for reflection/serialization
+-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Retrofit 2 rules
+-dontwarn retrofit2.**
+-keep class retrofit2.** { *; }
+-keepclasseswithmembers class * {
+    @retrofit2.http.* <methods>;
+}
+-keepclassmembers,allowobfuscation interface * {
+    @retrofit2.http.* <methods>;
+}
+
+# Moshi rules
+-dontwarn com.squareup.moshi.**
+-keep class com.squareup.moshi.** { *; }
+-keep interface com.squareup.moshi.** { *; }
+-keepclassmembers class * {
+    @com.squareup.moshi.Json <fields>;
+}
+-keepclasseswithmembers class * {
+    @com.squareup.moshi.JsonClass <methods>;
+}
+-keep class * extends com.squareup.moshi.JsonAdapter { *; }
+-keep class com.example.data.api.models.** { *; }
+-keepclassmembers class com.example.data.api.models.** { *; }
+
+# OkHttp 3 & Okio rules
+-dontwarn okhttp3.**
+-dontwarn okio.**
+-keepnames class okhttp3.internal.publicsuffix.PublicSuffixDatabase
+
+# Room Database rules
+-keep class * extends androidx.room.RoomDatabase
+-keep class com.example.data.database.entities.** { *; }
+-keep class com.example.data.database.daos.** { *; }
+-keep class com.example.data.database.AppDatabase { *; }
+-keep class com.example.data.database.AppDatabase_Impl { *; }
+-dontwarn androidx.room.paging.**
+
+# WorkManager rules
+-keep class * extends androidx.work.Worker { *; }
+-keep class * extends androidx.work.ListenableWorker { *; }
+-keep class * extends androidx.work.CoroutineWorker { *; }
+-keep class com.example.worker.** { *; }
+
+# Kotlin Coroutines
+-dontwarn kotlinx.coroutines.**
+-keep class kotlinx.coroutines.** { *; }
+
+# Coil image loading
+-keep class coil.** { *; }
+-dontwarn coil.**

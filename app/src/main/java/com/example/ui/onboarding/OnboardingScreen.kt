@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -69,7 +70,7 @@ fun OnboardingScreen(
     AnimatedContent(
         targetState = currentStep,
         label = "onboarding_steps",
-        modifier = modifier
+        modifier = modifier.safeDrawingPadding()
     ) { step ->
         when (step) {
             0 -> {

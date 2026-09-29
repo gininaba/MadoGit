@@ -7,12 +7,13 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
-import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import com.example.MainActivity
+import com.example.R
 import com.example.data.database.entities.GitHubNotificationEntity
 import com.example.data.repository.NotificationPreferences
 
@@ -24,6 +25,7 @@ object NotificationHelper {
     const val CHANNEL_ACTIVITY = "channel_repo_activity"
 
     private const val GROUP_GITHUB_NOTIFICATIONS = "group_github_notifications"
+    private const val GROUP_SUMMARY_NOTIFICATION_ID = 9001
 
     fun createNotificationChannels(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -156,10 +158,10 @@ object NotificationHelper {
         }
 
         // Tap intent: opens the target GitHub URL in browser or app
-        val targetUri = Uri.parse(
-            if (notification.targetUrl.isNotBlank()) notification.targetUrl
-            else "https://github.com/${notification.repoFullName}"
-        )
+        val targetUrl = if (notification.targetUrl.isNotBlank()) notification.targetUrl
+                        else "https://github.com/${notification.repoFullName}"
+        val targetUri = targetUrl.toUri()
+
         val viewIntent = Intent(Intent.ACTION_VIEW, targetUri).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
@@ -183,7 +185,7 @@ object NotificationHelper {
         )
 
         val builder = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(android.R.drawable.ic_popup_reminder)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("[${notification.repoFullName}] ${notification.title}")
             .setContentText(notification.body)
             .setStyle(
@@ -219,9 +221,23 @@ object NotificationHelper {
 
         val notificationId = notification.id.hashCode()
         try {
-            NotificationManagerCompat.from(context).notify(notificationId, builder.build())
+            val manager = NotificationManagerCompat.from(context)
+            manager.notify(notificationId, builder.build())
+
+            // If grouping enabled, post group summary notification
+            if (prefs.groupingEnabled) {
+                val summaryNotification = NotificationCompat.Builder(context, channelId)
+                    .setSmallIcon(R.drawable.ic_notification)
+                    .setStyle(NotificationCompat.InboxStyle().setSummaryText("GitHub Alerts"))
+                    .setGroup(GROUP_GITHUB_NOTIFICATIONS)
+                    .setGroupSummary(true)
+                    .setAutoCancel(true)
+                    .build()
+                manager.notify(GROUP_SUMMARY_NOTIFICATION_ID, summaryNotification)
+            }
         } catch (_: SecurityException) {
             // Handled safely if permission is revoked mid-flight
         }
     }
 }
+

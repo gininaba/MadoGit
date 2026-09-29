@@ -20,6 +20,7 @@ class GitHubSyncWorker(
             Log.d("GitHubSyncWorker", "Background sync completed with $count new notifications")
             Result.success()
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             Log.e("GitHubSyncWorker", "Background sync error", e)
             if (runAttemptCount < 3) {
                 Result.retry()

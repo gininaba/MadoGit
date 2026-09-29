@@ -2,6 +2,7 @@ package com.example.data.repository
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.core.content.edit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -138,69 +139,69 @@ class PreferencesRepository(context: Context) {
 
     fun updateNotificationPreferences(prefsUpdate: NotificationPreferences) {
         _notificationPrefs.value = prefsUpdate
-        prefs.edit()
-            .putBoolean("pref_pr_master", prefsUpdate.prMaster)
-            .putBoolean("pref_pr_opened", prefsUpdate.prOpened)
-            .putBoolean("pref_pr_review_requested", prefsUpdate.prReviewRequested)
-            .putBoolean("pref_pr_approved", prefsUpdate.prApproved)
-            .putBoolean("pref_pr_changes_requested", prefsUpdate.prChangesRequested)
-            .putBoolean("pref_pr_merged", prefsUpdate.prMerged)
-            .putBoolean("pref_pr_closed", prefsUpdate.prClosed)
-            .putBoolean("pref_issue_master", prefsUpdate.issueMaster)
-            .putBoolean("pref_issue_opened", prefsUpdate.issueOpened)
-            .putBoolean("pref_issue_assigned", prefsUpdate.issueAssigned)
-            .putBoolean("pref_issue_mentioned", prefsUpdate.issueMentioned)
-            .putBoolean("pref_issue_commented", prefsUpdate.issueCommented)
-            .putBoolean("pref_action_master", prefsUpdate.actionMaster)
-            .putBoolean("pref_action_failed", prefsUpdate.actionFailed)
-            .putBoolean("pref_action_succeeded", prefsUpdate.actionSucceeded)
-            .putBoolean("pref_action_cancelled", prefsUpdate.actionCancelled)
-            .putBoolean("pref_release_master", prefsUpdate.releaseMaster)
-            .putBoolean("pref_release_published", prefsUpdate.releasePublished)
-            .putBoolean("pref_activity_master", prefsUpdate.activityMaster)
-            .putBoolean("pref_activity_commits", prefsUpdate.activityCommits)
-            .putBoolean("pref_activity_comments", prefsUpdate.activityComments)
-            .putBoolean("pref_sound_enabled", prefsUpdate.soundEnabled)
-            .putBoolean("pref_vibration_enabled", prefsUpdate.vibrationEnabled)
-            .putBoolean("pref_grouping_enabled", prefsUpdate.groupingEnabled)
-            .apply()
+        prefs.edit {
+            putBoolean("pref_pr_master", prefsUpdate.prMaster)
+            putBoolean("pref_pr_opened", prefsUpdate.prOpened)
+            putBoolean("pref_pr_review_requested", prefsUpdate.prReviewRequested)
+            putBoolean("pref_pr_approved", prefsUpdate.prApproved)
+            putBoolean("pref_pr_changes_requested", prefsUpdate.prChangesRequested)
+            putBoolean("pref_pr_merged", prefsUpdate.prMerged)
+            putBoolean("pref_pr_closed", prefsUpdate.prClosed)
+            putBoolean("pref_issue_master", prefsUpdate.issueMaster)
+            putBoolean("pref_issue_opened", prefsUpdate.issueOpened)
+            putBoolean("pref_issue_assigned", prefsUpdate.issueAssigned)
+            putBoolean("pref_issue_mentioned", prefsUpdate.issueMentioned)
+            putBoolean("pref_issue_commented", prefsUpdate.issueCommented)
+            putBoolean("pref_action_master", prefsUpdate.actionMaster)
+            putBoolean("pref_action_failed", prefsUpdate.actionFailed)
+            putBoolean("pref_action_succeeded", prefsUpdate.actionSucceeded)
+            putBoolean("pref_action_cancelled", prefsUpdate.actionCancelled)
+            putBoolean("pref_release_master", prefsUpdate.releaseMaster)
+            putBoolean("pref_release_published", prefsUpdate.releasePublished)
+            putBoolean("pref_activity_master", prefsUpdate.activityMaster)
+            putBoolean("pref_activity_commits", prefsUpdate.activityCommits)
+            putBoolean("pref_activity_comments", prefsUpdate.activityComments)
+            putBoolean("pref_sound_enabled", prefsUpdate.soundEnabled)
+            putBoolean("pref_vibration_enabled", prefsUpdate.vibrationEnabled)
+            putBoolean("pref_grouping_enabled", prefsUpdate.groupingEnabled)
+        }
     }
 
     fun updateSyncPreferences(syncUpdate: SyncPreferences) {
         _syncPrefs.value = syncUpdate
-        prefs.edit()
-            .putLong("pref_sync_interval", syncUpdate.intervalMinutes)
-            .putBoolean("pref_wifi_only", syncUpdate.wifiOnly)
-            .putBoolean("pref_monitor_all", syncUpdate.monitorAllByDefault)
-            .apply()
+        prefs.edit {
+            putLong("pref_sync_interval", syncUpdate.intervalMinutes)
+            putBoolean("pref_wifi_only", syncUpdate.wifiOnly)
+            putBoolean("pref_monitor_all", syncUpdate.monitorAllByDefault)
+        }
     }
 
     fun setThemeMode(mode: ThemeMode) {
         _themeMode.value = mode
-        prefs.edit().putString("pref_theme_mode", mode.name).apply()
+        prefs.edit { putString("pref_theme_mode", mode.name) }
     }
 
     fun setDynamicColor(enabled: Boolean) {
         _dynamicColor.value = enabled
-        prefs.edit().putBoolean("pref_dynamic_color", enabled).apply()
+        prefs.edit { putBoolean("pref_dynamic_color", enabled) }
     }
 
     fun setFirstLaunchCompleted() {
         _isFirstLaunch.value = false
-        prefs.edit().putBoolean(KEY_FIRST_LAUNCH, false).apply()
+        prefs.edit { putBoolean(KEY_FIRST_LAUNCH, false) }
     }
 
     fun updateLastSyncTime(timestamp: Long = System.currentTimeMillis()) {
         _lastSyncTimestamp.value = timestamp
-        prefs.edit().putLong(KEY_LAST_SYNC_TIME, timestamp).apply()
+        prefs.edit { putLong(KEY_LAST_SYNC_TIME, timestamp) }
     }
 
     fun updateRateLimit(remaining: Int, limit: Int) {
         _rateLimitInfo.value = Pair(remaining, limit)
-        prefs.edit()
-            .putInt("rate_limit_remaining", remaining)
-            .putInt("rate_limit_limit", limit)
-            .apply()
+        prefs.edit {
+            putInt("rate_limit_remaining", remaining)
+            putInt("rate_limit_limit", limit)
+        }
     }
 
     companion object {

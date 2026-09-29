@@ -2,10 +2,12 @@ package com.example.data.auth
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.core.content.edit
 import com.example.data.api.models.GitHubUserDto
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.util.UUID
 
 sealed class AuthState {
     data object Unauthenticated : AuthState()
@@ -28,6 +30,7 @@ class TokenManager(context: Context) {
         private const val KEY_OAUTH_CLIENT_ID = "github_oauth_client_id"
         private const val KEY_OAUTH_CLIENT_SECRET = "github_oauth_client_secret"
         private const val KEY_REDIRECT_URI = "github_oauth_redirect_uri"
+        private const val KEY_OAUTH_STATE = "github_oauth_state"
         private const val KEY_USERNAME = "cached_username"
         private const val KEY_AVATAR_URL = "cached_avatar_url"
         private const val KEY_DISPLAY_NAME = "cached_display_name"
@@ -38,7 +41,8 @@ class TokenManager(context: Context) {
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
     private fun loadInitialAuthState(): AuthState {
-        val token = prefs.getString(KEY_AUTH_TOKEN, null)
+        val encryptedToken = prefs.getString(KEY_AUTH_TOKEN, null)
+        val token = if (!encryptedToken.isNullOrBlank()) CryptoManager.decrypt(encryptedToken) else null
         val username = prefs.getString(KEY_USERNAME, null)
         val avatarUrl = prefs.getString(KEY_AVATAR_URL, null)
         val displayName = prefs.getString(KEY_DISPLAY_NAME, null)
@@ -55,32 +59,58 @@ class TokenManager(context: Context) {
         }
     }
 
-    fun getAccessToken(): String? = prefs.getString(KEY_AUTH_TOKEN, null)
+    fun getAccessToken(): String? {
+        val rawOrEncrypted = prefs.getString(KEY_AUTH_TOKEN, null) ?: return null
+        val decrypted = CryptoManager.decrypt(rawOrEncrypted)
+        return decrypted.ifBlank { null }
+    }
 
     fun getOAuthClientId(): String = prefs.getString(KEY_OAUTH_CLIENT_ID, "") ?: ""
 
-    fun getOAuthClientSecret(): String = prefs.getString(KEY_OAUTH_CLIENT_SECRET, "") ?: ""
+    fun getOAuthClientSecret(): String {
+        val rawOrEncrypted = prefs.getString(KEY_OAUTH_CLIENT_SECRET, "") ?: ""
+        return if (rawOrEncrypted.isNotBlank()) CryptoManager.decrypt(rawOrEncrypted) else ""
+    }
 
     fun getRedirectUri(): String = prefs.getString(KEY_REDIRECT_URI, DEFAULT_REDIRECT_URI) ?: DEFAULT_REDIRECT_URI
 
+    fun generateOAuthState(): String {
+        val state = UUID.randomUUID().toString()
+        prefs.edit { putString(KEY_OAUTH_STATE, state) }
+        return state
+    }
+
+    fun verifyOAuthState(state: String?): Boolean {
+        if (state.isNullOrBlank()) return false
+        val savedState = prefs.getString(KEY_OAUTH_STATE, null)
+        val matches = savedState != null && savedState == state
+        // Clear once verified to prevent replay
+        prefs.edit { remove(KEY_OAUTH_STATE) }
+        return matches
+    }
+
     fun saveOAuthConfiguration(clientId: String, clientSecret: String, redirectUri: String = DEFAULT_REDIRECT_URI) {
-        prefs.edit()
-            .putString(KEY_OAUTH_CLIENT_ID, clientId.trim())
-            .putString(KEY_OAUTH_CLIENT_SECRET, clientSecret.trim())
-            .putString(KEY_REDIRECT_URI, redirectUri.trim())
-            .apply()
+        val encryptedSecret = if (clientSecret.isNotBlank()) CryptoManager.encrypt(clientSecret.trim()) else ""
+        prefs.edit {
+            putString(KEY_OAUTH_CLIENT_ID, clientId.trim())
+            putString(KEY_OAUTH_CLIENT_SECRET, encryptedSecret)
+            putString(KEY_REDIRECT_URI, redirectUri.trim())
+        }
     }
 
     fun saveAuthSuccess(token: String, user: GitHubUserDto) {
-        prefs.edit()
-            .putString(KEY_AUTH_TOKEN, token.trim())
-            .putString(KEY_USERNAME, user.login)
-            .putString(KEY_AVATAR_URL, user.avatarUrl)
-            .putString(KEY_DISPLAY_NAME, user.name ?: user.login)
-            .apply()
+        val trimmedToken = token.trim()
+        val encryptedToken = CryptoManager.encrypt(trimmedToken)
+
+        prefs.edit {
+            putString(KEY_AUTH_TOKEN, encryptedToken)
+            putString(KEY_USERNAME, user.login)
+            putString(KEY_AVATAR_URL, user.avatarUrl)
+            putString(KEY_DISPLAY_NAME, user.name ?: user.login)
+        }
 
         _authState.value = AuthState.Authenticated(
-            token = token.trim(),
+            token = trimmedToken,
             username = user.login,
             avatarUrl = user.avatarUrl,
             displayName = user.name ?: user.login
@@ -89,11 +119,11 @@ class TokenManager(context: Context) {
 
     fun updateCachedUser(user: GitHubUserDto) {
         val token = getAccessToken() ?: return
-        prefs.edit()
-            .putString(KEY_USERNAME, user.login)
-            .putString(KEY_AVATAR_URL, user.avatarUrl)
-            .putString(KEY_DISPLAY_NAME, user.name ?: user.login)
-            .apply()
+        prefs.edit {
+            putString(KEY_USERNAME, user.login)
+            putString(KEY_AVATAR_URL, user.avatarUrl)
+            putString(KEY_DISPLAY_NAME, user.name ?: user.login)
+        }
 
         _authState.value = AuthState.Authenticated(
             token = token,
@@ -104,12 +134,13 @@ class TokenManager(context: Context) {
     }
 
     fun clearAuth() {
-        prefs.edit()
-            .remove(KEY_AUTH_TOKEN)
-            .remove(KEY_USERNAME)
-            .remove(KEY_AVATAR_URL)
-            .remove(KEY_DISPLAY_NAME)
-            .apply()
+        prefs.edit {
+            remove(KEY_AUTH_TOKEN)
+            remove(KEY_USERNAME)
+            remove(KEY_AVATAR_URL)
+            remove(KEY_DISPLAY_NAME)
+            remove(KEY_OAUTH_STATE)
+        }
 
         _authState.value = AuthState.Unauthenticated
     }
@@ -122,3 +153,4 @@ class TokenManager(context: Context) {
         _authState.value = AuthState.Error(message)
     }
 }
+

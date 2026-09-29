@@ -97,6 +97,12 @@ data class GitHubPullRequestDto(
 )
 
 @JsonClass(generateAdapter = true)
+data class IssuePullRequestRefDto(
+    val url: String? = null,
+    @Json(name = "html_url") val htmlUrl: String? = null
+)
+
+@JsonClass(generateAdapter = true)
 data class GitHubIssueDto(
     val id: Long,
     val number: Int,
@@ -107,7 +113,7 @@ data class GitHubIssueDto(
     @Json(name = "updated_at") val updatedAt: String,
     val user: UserSummaryDto,
     val assignees: List<UserSummaryDto>? = emptyList(),
-    @Json(name = "pull_request") val pullRequest: Any? = null
+    @Json(name = "pull_request") val pullRequest: IssuePullRequestRefDto? = null
 )
 
 @JsonClass(generateAdapter = true)

@@ -108,8 +108,19 @@ class MainViewModel(
         }
     }
 
-    fun handleOAuthCode(code: String, onComplete: (Boolean, String?) -> Unit) {
+    fun generateOAuthState(): String = tokenManager.generateOAuthState()
+
+    fun verifyOAuthState(state: String?): Boolean = tokenManager.verifyOAuthState(state)
+
+    fun handleOAuthCode(code: String, state: String? = null, onComplete: (Boolean, String?) -> Unit) {
         viewModelScope.launch {
+            if (state != null && !tokenManager.verifyOAuthState(state)) {
+                val errorMsg = "OAuth state mismatch: Possible cross-site request forgery detected."
+                tokenManager.setAuthError(errorMsg)
+                onComplete(false, errorMsg)
+                return@launch
+            }
+
             tokenManager.setAuthLoading()
             try {
                 val clientId = tokenManager.getOAuthClientId()
@@ -142,6 +153,7 @@ class MainViewModel(
             }
         }
     }
+
 
     fun saveOAuthConfiguration(clientId: String, clientSecret: String, redirectUri: String) {
         tokenManager.saveOAuthConfiguration(clientId, clientSecret, redirectUri)

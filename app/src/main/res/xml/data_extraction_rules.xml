@@ -5,15 +5,11 @@
 -->
 <data-extraction-rules>
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <!-- Exclude credentials from cloud backup -->
+        <exclude domain="sharedpref" path="gh_auth_secure_prefs.xml"/>
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <!-- Exclude credentials from direct device transfers -->
+        <exclude domain="sharedpref" path="gh_auth_secure_prefs.xml"/>
     </device-transfer>
-    -->
 </data-extraction-rules>

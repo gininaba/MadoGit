@@ -20,7 +20,7 @@ import com.example.data.database.entities.SyncLogEntity
         ProcessedEventEntity::class,
         SyncLogEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

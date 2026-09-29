@@ -2,8 +2,8 @@ package com.example.ui.components
 
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.widget.Toast
+import androidx.core.net.toUri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -235,7 +235,7 @@ fun SyncButton(
 fun openExternalUrl(context: Context, url: String?) {
     try {
         val target = if (!url.isNullOrBlank()) url.trim() else "https://github.com"
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(target)).apply {
+        val intent = Intent(Intent.ACTION_VIEW, target.toUri()).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
         context.startActivity(intent)
