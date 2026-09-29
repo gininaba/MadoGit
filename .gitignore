@@ -1,0 +1,16 @@
+*.iml
+.gradle/
+.kotlin/
+/local.properties
+local.properties
+.idea/
+.vscode/
+.DS_Store
+*/.DS_Store
+build/
+**/build/
+/captures
+.externalNativeBuild
+.cxx
+.env
+debug.keystore
