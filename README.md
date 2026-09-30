@@ -21,7 +21,7 @@
   <img src="https://img.shields.io/badge/Language-Kotlin_2.2+-7F52FF?style=flat-square&logo=kotlin&logoColor=white" alt="Language" />
   <img src="https://img.shields.io/badge/UI-Jetpack_Compose_Material_3-4285F4?style=flat-square" alt="UI" />
   <img src="https://img.shields.io/badge/Architecture-MVVM_+_Offline--First-00BCD4?style=flat-square" alt="Architecture" />
-  <img src="https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square" alt="License" />
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square" alt="License" /></a>
 </p>
 
 > [!IMPORTANT]
@@ -296,6 +296,7 @@ madogit/
 │   └── sync-and-rate-limiting.md     # Sync engine & rate limiting
 ├── build.gradle.kts                  # Root Gradle build script
 ├── settings.gradle.kts               # Project configuration
+├── LICENSE                           # Apache License 2.0
 └── README.md                         # Main repository documentation
 ```
 
@@ -318,8 +319,10 @@ MadoGit maintains a comprehensive automated testing pipeline:
 
 ## 12. License
 
+This project is licensed under the Apache License, Version 2.0. See the [LICENSE](LICENSE) file for the complete terms and conditions.
+
 ```
-Copyright 2026 MadoGit Contributors
+Copyright 2026 gininaba (MadoGit Contributors)
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -333,3 +336,4 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ```
+
