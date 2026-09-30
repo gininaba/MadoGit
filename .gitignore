@@ -1,4 +1,11 @@
 # Built artifacts
+*.apk
+*.aab
+*.ap_
+*.dex
+app/release/
+app/debug/
+release/
 *.iml
 .gradle/
 .kotlin/
