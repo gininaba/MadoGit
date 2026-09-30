@@ -89,7 +89,7 @@ Output artifact location: `app/build/outputs/apk/debug/app-debug.apk`
 
 ## Testing Framework & Best Practices
 
-MadoGit's test suite resides in `app/src/test/java/com/example/`:
+MadoGit's test suite resides in `app/src/test/java/com/aipos/madogit/`:
 
 1. **JUnit 4 (`ExampleUnitTest.kt`)**: Fast, pure unit tests validating pure business logic, string formatting, date parsing, and preference models without Android runtime dependencies.
 2. **Robolectric (`ExampleRobolectricTest.kt`)**: JVM-based Android framework simulation (`@Config(sdk = [34])`):

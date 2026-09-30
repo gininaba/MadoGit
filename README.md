@@ -264,7 +264,7 @@ madogit/
 ├── app/
 │   ├── src/
 │   │   ├── main/
-│   │   │   ├── java/com/example/
+│   │   │   ├── java/com/aipos/madogit/
 │   │   │   │   ├── data/
 │   │   │   │   │   ├── api/          # Retrofit interface, Moshi models, OkHttp client
 │   │   │   │   │   ├── auth/         # TokenManager (EncryptedSharedPreferences)
@@ -287,7 +287,7 @@ madogit/
 │   │   │       ├── values/           # Strings, colors, styles
 │   │   │       └── xml/              # Backup & extraction rules
 │   │   └── test/
-│   │       └── java/com/example/     # Unit & Robolectric test suite
+│   │       └── java/com/aipos/madogit/ # Unit & Robolectric test suite
 ├── docs/
 │   ├── assets/                       # Brand artwork and diagrams
 │   ├── architecture.md               # Architecture documentation

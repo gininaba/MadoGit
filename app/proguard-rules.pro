@@ -28,8 +28,8 @@
     @com.squareup.moshi.JsonClass <methods>;
 }
 -keep class * extends com.squareup.moshi.JsonAdapter { *; }
--keep class com.example.data.api.models.** { *; }
--keepclassmembers class com.example.data.api.models.** { *; }
+-keep class com.aipos.madogit.data.api.models.** { *; }
+-keepclassmembers class com.aipos.madogit.data.api.models.** { *; }
 
 # OkHttp 3 & Okio rules
 -dontwarn okhttp3.**
@@ -38,17 +38,17 @@
 
 # Room Database rules
 -keep class * extends androidx.room.RoomDatabase
--keep class com.example.data.database.entities.** { *; }
--keep class com.example.data.database.daos.** { *; }
--keep class com.example.data.database.AppDatabase { *; }
--keep class com.example.data.database.AppDatabase_Impl { *; }
+-keep class com.aipos.madogit.data.database.entities.** { *; }
+-keep class com.aipos.madogit.data.database.daos.** { *; }
+-keep class com.aipos.madogit.data.database.AppDatabase { *; }
+-keep class com.aipos.madogit.data.database.AppDatabase_Impl { *; }
 -dontwarn androidx.room.paging.**
 
 # WorkManager rules
 -keep class * extends androidx.work.Worker { *; }
 -keep class * extends androidx.work.ListenableWorker { *; }
 -keep class * extends androidx.work.CoroutineWorker { *; }
--keep class com.example.worker.** { *; }
+-keep class com.aipos.madogit.worker.** { *; }
 
 # Kotlin Coroutines
 -dontwarn kotlinx.coroutines.**

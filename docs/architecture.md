@@ -95,7 +95,7 @@ The presentation layer is built entirely in **Jetpack Compose** using declarativ
 
 ### 2. Design System & Theming
 
-The theming engine lives in `com.example.ui.theme`:
+The theming engine lives in `com.aipos.madogit.ui.theme`:
 
 - **Theme.kt**: Evaluates system capabilities (`Build.VERSION.SDK_INT >= Build.VERSION_CODES.S`) and user preference (`isDynamicColorEnabled`). Dynamically selects `dynamicDarkColorScheme` / `dynamicLightColorScheme` or falls back to custom dark/light palettes.
 - **Color.kt**: Semantic color tokens mapping GitHub brand aesthetics (dark slate background `#0D1117`, surface `#161B22`, border `#30363D`, accent green `#2EA44F`) to Material 3 roles (`primary`, `surfaceContainer`, `outlineVariant`, etc.).

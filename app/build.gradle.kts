@@ -8,11 +8,11 @@ plugins {
 }
 
 android {
-  namespace = "com.example"
+  namespace = "com.aipos.madogit"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
-    applicationId = "com.aistudio.ghnotifier.kxwqtz"
+    applicationId = "com.aipos.madogit"
     minSdk = 24
     targetSdk = 36
     versionCode = 1

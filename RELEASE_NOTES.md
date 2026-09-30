@@ -48,6 +48,7 @@ MadoGit is a lightweight, developer-first personal GitHub notification assistant
 - Seeded initial repository sync items as read to prevent overwhelming alert floods on first launch.
 - Resolved vertical text wrapping on status badges for repositories with long names.
 - Removed duplicate status bar padding on the Notifications screen for consistent top alignment.
+- Refactored project package name and application ID to `com.aipos.madogit`.
 - Removed unnecessary third-party AI Studio boilerplate and external secrets Gradle plugin.
 - Added developer attribution ("Developed by gininaba") and repository links in Settings.
 
@@ -55,6 +56,7 @@ MadoGit is a lightweight, developer-first personal GitHub notification assistant
 
 ## Technical Specifications
 
+- **Package / Application ID**: `com.aipos.madogit`
 - **Target SDK**: 36 (Android 16)
 - **Minimum SDK**: 24 (Android 7.0 Nougat)
 - **Architecture**: MVVM, Unidirectional Data Flow, Offline-First (Room SQLite)
