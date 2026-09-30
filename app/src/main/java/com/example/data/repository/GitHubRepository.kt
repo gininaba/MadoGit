@@ -134,6 +134,11 @@ class GitHubRepository(
 
     suspend fun markAllNotificationsAsRead() = withContext(Dispatchers.IO) {
         notificationDao.markAllAsRead()
+        try {
+            apiService.markAllNotificationsAsRead()
+        } catch (_: Exception) {
+            // Non-critical background failure (e.g. offline or token scope restriction)
+        }
     }
 
     suspend fun deleteNotification(id: String) = withContext(Dispatchers.IO) {
@@ -241,11 +246,47 @@ class GitHubRepository(
 
             val notificationPreferences = preferencesRepository.notificationPrefs.value
 
+            // Purge any duplicate notifications in the local database (e.g. from ID format changes)
+            try {
+                val allNotifs = notificationDao.getAllNotificationsSync()
+                val seenKeys = mutableMapOf<String, GitHubNotificationEntity>()
+                for (n in allNotifs) {
+                    val key = if (n.targetUrl.isNotBlank()) n.targetUrl else "${n.repoFullName}::${n.title}"
+                    val existingSeen = seenKeys[key]
+                    if (existingSeen != null) {
+                        // If one is read and the other is unread, keep the read one and delete the unread duplicate
+                        if (existingSeen.isRead && !n.isRead) {
+                            notificationDao.deleteNotification(n.id)
+                        } else if (!existingSeen.isRead && n.isRead) {
+                            notificationDao.deleteNotification(existingSeen.id)
+                            seenKeys[key] = n
+                        } else {
+                            notificationDao.deleteNotification(n.id)
+                        }
+                    } else {
+                        seenKeys[key] = n
+                    }
+                }
+            } catch (_: Exception) {}
+
             // 4. Check Official GitHub Notifications API (/notifications)
             try {
-                val remoteNotifications = apiService.getNotifications(all = false, participating = false)
+                val remoteNotifications = apiService.getNotifications(all = true, participating = false)
                 for (item in remoteNotifications) {
                     val notifId = "gh_thread_${item.id}"
+                    val existing = notificationDao.getNotificationById(notifId)
+
+                    if (existing != null) {
+                        // Reconcile read status:
+                        // If user marked read locally (existing.isRead), keep it read.
+                        // If read on GitHub (!item.unread), update local state to read.
+                        val shouldBeRead = existing.isRead || !item.unread
+                        if (shouldBeRead != existing.isRead && shouldBeRead) {
+                            notificationDao.markAsRead(notifId)
+                        }
+                        continue
+                    }
+
                     if (!processedEventDao.isEventProcessed(notifId)) {
                         processedEventDao.insertProcessedEvent(
                             ProcessedEventEntity(
@@ -277,6 +318,7 @@ class GitHubRepository(
                             else -> "UNREAD"
                         }
 
+                        val isRead = !item.unread
                         val entity = GitHubNotificationEntity(
                             id = notifId,
                             eventType = normalizedEventType,
@@ -288,14 +330,16 @@ class GitHubRepository(
                             avatarUrl = item.repository.owner.avatarUrl,
                             targetUrl = item.repository.htmlUrl ?: "https://github.com/${item.repository.fullName}",
                             timestamp = parseIsoDate(item.updatedAt),
-                            isRead = !item.unread,
+                            isRead = isRead,
                             isNotified = true,
                             actionState = notifActionState
                         )
 
                         notificationDao.insert(entity)
-                        newNotificationsCount++
-                        NotificationHelper.postNotification(context, entity, notificationPreferences)
+                        if (!isRead) {
+                            newNotificationsCount++
+                            NotificationHelper.postNotification(context, entity, notificationPreferences)
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -311,13 +355,33 @@ class GitHubRepository(
                 if (parts.size != 2) continue
                 val owner = parts[0]
                 val repoName = parts[1]
+                val isFirstSyncForRepo = repo.lastSyncedAt == 0L
 
                 // Fetch workflow runs (CI/CD)
                 if (notificationPreferences.actionMaster) {
                     try {
                         val runsResponse = apiService.getWorkflowRuns(owner, repoName, perPage = 5)
                         for (run in runsResponse.workflowRuns) {
-                            val runEventId = "gh_run_${run.id}_${run.conclusion ?: run.status}"
+                            val conclusion = run.conclusion?.uppercase() ?: run.status?.uppercase() ?: "PENDING"
+                            val isFailed = conclusion in listOf("FAILURE", "FAILED", "TIMED_OUT")
+                            val isSuccess = conclusion == "SUCCESS"
+
+                            // Only process if preferences allow it (actionSucceeded is false by default)
+                            val shouldProcess = (isFailed && notificationPreferences.actionFailed) ||
+                                                (isSuccess && notificationPreferences.actionSucceeded)
+                            if (!shouldProcess) {
+                                continue
+                            }
+
+                            val runEventId = "gh_run_${run.id}"
+                            val existing = notificationDao.getNotificationById(runEventId)
+                                ?: (if (!run.htmlUrl.isNullOrBlank()) notificationDao.getNotificationByTargetUrl(run.htmlUrl) else null)
+                                ?: notificationDao.getNotificationByRepoAndTitle(repo.fullName, "${run.name ?: "Build"} #${run.runNumber}: $conclusion")
+
+                            if (existing != null) {
+                                continue
+                            }
+
                             if (!processedEventDao.isEventProcessed(runEventId)) {
                                 processedEventDao.insertProcessedEvent(
                                     ProcessedEventEntity(
@@ -327,28 +391,27 @@ class GitHubRepository(
                                     )
                                 )
 
-                                val conclusion = run.conclusion?.uppercase() ?: run.status?.uppercase() ?: "PENDING"
-                                val isFailed = conclusion in listOf("FAILURE", "FAILED", "TIMED_OUT")
-                                val isSuccess = conclusion == "SUCCESS"
+                                // On first sync of a repo, past completed runs are marked as read
+                                val isRead = isFirstSyncForRepo
 
-                                if (isFailed || isSuccess) {
-                                    val notif = GitHubNotificationEntity(
-                                        id = runEventId,
-                                        eventType = if (isFailed) "WORKFLOW_FAILED" else "WORKFLOW_SUCCESS",
-                                        category = "WORKFLOW",
-                                        repoFullName = repo.fullName,
-                                        title = "${run.name ?: "Build"} #${run.runNumber}: $conclusion",
-                                        body = "Branch: ${run.headBranch ?: repo.defaultBranch} • Event: ${run.event ?: "push"}",
-                                        author = owner,
-                                        avatarUrl = null,
-                                        targetUrl = run.htmlUrl,
-                                        timestamp = parseIsoDate(run.updatedAt),
-                                        isRead = false,
-                                        isNotified = true,
-                                        actionState = conclusion
-                                    )
+                                val notif = GitHubNotificationEntity(
+                                    id = runEventId,
+                                    eventType = if (isFailed) "WORKFLOW_FAILED" else "WORKFLOW_SUCCESS",
+                                    category = "WORKFLOW",
+                                    repoFullName = repo.fullName,
+                                    title = "${run.name ?: "Build"} #${run.runNumber}: $conclusion",
+                                    body = "Branch: ${run.headBranch ?: repo.defaultBranch} • Event: ${run.event ?: "push"}",
+                                    author = owner,
+                                    avatarUrl = null,
+                                    targetUrl = run.htmlUrl,
+                                    timestamp = parseIsoDate(run.updatedAt),
+                                    isRead = isRead,
+                                    isNotified = true,
+                                    actionState = conclusion
+                                )
 
-                                    notificationDao.insert(notif)
+                                notificationDao.insert(notif)
+                                if (!isRead) {
                                     newNotificationsCount++
                                     NotificationHelper.postNotification(context, notif, notificationPreferences)
                                 }
@@ -364,7 +427,15 @@ class GitHubRepository(
                     try {
                         val prs = apiService.getPullRequests(owner, repoName, state = "open", perPage = 5)
                         for (pr in prs) {
-                            val prEventId = "gh_pr_${pr.id}_${pr.updatedAt}"
+                            val prEventId = "gh_pr_${pr.id}"
+                            val existing = notificationDao.getNotificationById(prEventId)
+                                ?: (if (!pr.htmlUrl.isNullOrBlank()) notificationDao.getNotificationByTargetUrl(pr.htmlUrl) else null)
+                                ?: notificationDao.getNotificationByRepoAndTitle(repo.fullName, "PR #${pr.number}: ${pr.title}")
+
+                            if (existing != null) {
+                                continue
+                            }
+
                             if (!processedEventDao.isEventProcessed(prEventId)) {
                                 processedEventDao.insertProcessedEvent(
                                     ProcessedEventEntity(
@@ -381,6 +452,9 @@ class GitHubRepository(
                                 val prEventType = if (isReviewRequested) "REVIEW_REQUESTED" else "PR_OPENED"
                                 val prActionState = if (isReviewRequested) "REVIEW_REQUESTED" else "OPEN"
 
+                                // On first sync of a repo, mark as read unless review is explicitly requested from current user
+                                val isRead = if (isFirstSyncForRepo) !isReviewRequested else false
+
                                 val notif = GitHubNotificationEntity(
                                     id = prEventId,
                                     eventType = prEventType,
@@ -393,14 +467,16 @@ class GitHubRepository(
                                     avatarUrl = pr.user.avatarUrl,
                                     targetUrl = pr.htmlUrl,
                                     timestamp = parseIsoDate(pr.updatedAt),
-                                    isRead = false,
+                                    isRead = isRead,
                                     isNotified = true,
                                     actionState = prActionState
                                 )
 
                                 notificationDao.insert(notif)
-                                newNotificationsCount++
-                                NotificationHelper.postNotification(context, notif, notificationPreferences)
+                                if (!isRead) {
+                                    newNotificationsCount++
+                                    NotificationHelper.postNotification(context, notif, notificationPreferences)
+                                }
                             }
                         }
                     } catch (_: Exception) {}
@@ -411,10 +487,17 @@ class GitHubRepository(
                     try {
                         val issues = apiService.getIssues(owner, repoName, state = "open", perPage = 5)
                         for (issue in issues) {
-                            // GitHub's issues endpoint also returns PRs; filter out PRs so we only process true issues
                             if (issue.pullRequest != null) continue
 
-                            val issueEventId = "gh_issue_${issue.id}_${issue.updatedAt}"
+                            val issueEventId = "gh_issue_${issue.id}"
+                            val existing = notificationDao.getNotificationById(issueEventId)
+                                ?: (if (!issue.htmlUrl.isNullOrBlank()) notificationDao.getNotificationByTargetUrl(issue.htmlUrl) else null)
+                                ?: notificationDao.getNotificationByRepoAndTitle(repo.fullName, "Issue #${issue.number}: ${issue.title}")
+
+                            if (existing != null) {
+                                continue
+                            }
+
                             if (!processedEventDao.isEventProcessed(issueEventId)) {
                                 processedEventDao.insertProcessedEvent(
                                     ProcessedEventEntity(
@@ -431,6 +514,9 @@ class GitHubRepository(
                                 val issueEventType = if (isAssigned) "ASSIGNED" else "ISSUE_OPENED"
                                 val issueActionState = if (isAssigned) "ASSIGNED" else "OPEN"
 
+                                // On first sync of a repo, mark as read unless assigned to current user
+                                val isRead = if (isFirstSyncForRepo) !isAssigned else false
+
                                 val notif = GitHubNotificationEntity(
                                     id = issueEventId,
                                     eventType = issueEventType,
@@ -443,14 +529,16 @@ class GitHubRepository(
                                     avatarUrl = issue.user.avatarUrl,
                                     targetUrl = issue.htmlUrl,
                                     timestamp = parseIsoDate(issue.updatedAt),
-                                    isRead = false,
+                                    isRead = isRead,
                                     isNotified = true,
                                     actionState = issueActionState
                                 )
 
                                 notificationDao.insert(notif)
-                                newNotificationsCount++
-                                NotificationHelper.postNotification(context, notif, notificationPreferences)
+                                if (!isRead) {
+                                    newNotificationsCount++
+                                    NotificationHelper.postNotification(context, notif, notificationPreferences)
+                                }
                             }
                         }
                     } catch (_: Exception) {}
@@ -462,6 +550,13 @@ class GitHubRepository(
                         val releases = apiService.getReleases(owner, repoName, perPage = 3)
                         for (rel in releases) {
                             val relEventId = "gh_rel_${rel.id}"
+                            val existing = notificationDao.getNotificationById(relEventId)
+                                ?: (if (!rel.htmlUrl.isNullOrBlank()) notificationDao.getNotificationByTargetUrl(rel.htmlUrl) else null)
+
+                            if (existing != null) {
+                                continue
+                            }
+
                             if (!processedEventDao.isEventProcessed(relEventId)) {
                                 processedEventDao.insertProcessedEvent(
                                     ProcessedEventEntity(
@@ -470,6 +565,8 @@ class GitHubRepository(
                                         repoFullName = repo.fullName
                                     )
                                 )
+
+                                val isRead = isFirstSyncForRepo
 
                                 val notif = GitHubNotificationEntity(
                                     id = relEventId,
@@ -482,14 +579,16 @@ class GitHubRepository(
                                     avatarUrl = rel.author?.avatarUrl,
                                     targetUrl = rel.htmlUrl,
                                     timestamp = parseIsoDate(rel.publishedAt),
-                                    isRead = false,
+                                    isRead = isRead,
                                     isNotified = true,
                                     actionState = "PUBLISHED"
                                 )
 
                                 notificationDao.insert(notif)
-                                newNotificationsCount++
-                                NotificationHelper.postNotification(context, notif, notificationPreferences)
+                                if (!isRead) {
+                                    newNotificationsCount++
+                                    NotificationHelper.postNotification(context, notif, notificationPreferences)
+                                }
                             }
                         }
                     } catch (_: Exception) {}
@@ -579,8 +678,8 @@ class GitHubRepository(
             assignedIssues = assignedIssues,
             failedWorkflows = failedWorkflows,
             unreadNotifications = unreadNotifications,
-            totalActionableItems = if (total > 0) total else unreadNotifications,
-            topActionableItems = if (actionableItems.isNotEmpty()) actionableItems else unread.take(5)
+            totalActionableItems = total,
+            topActionableItems = actionableItems
         )
     }
 

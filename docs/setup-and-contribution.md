@@ -1,5 +1,9 @@
 # MadoGit Developer Setup & Contribution Guide
 
+> [!IMPORTANT]
+> **Project Status: Experimental**
+> MadoGit is in active, experimental development. Features, internal schemas, and UI components are continuously evolving. Contributions, issues, and feedback are welcome.
+
 ## Prerequisites & Development Environment
 
 To build, run, and contribute to MadoGit, ensure your local development workstation meets the following specifications:
@@ -8,10 +12,10 @@ To build, run, and contribute to MadoGit, ensure your local development workstat
 - **Java Development Kit**: JDK 17 (Azul Zulu, OpenJDK, or Eclipse Temurin recommended).
 - **Android Studio**: Android Studio Hedgehog (2023.1.1) or newer (Koala / Ladybug recommended).
 - **Android SDK Requirements**:
-  - `compileSdk`: 34 (Android 14)
-  - `targetSdk`: 34
-  - `minSdk`: 26 (Android 8.0 Oreo)
-  - Android SDK Build-Tools: `34.0.0`
+  - `compileSdk`: 36 (Android 16)
+  - `targetSdk`: 36
+  - `minSdk`: 24 (Android 7.0 Nougat)
+  - Android SDK Build-Tools: `34.0.0` or newer
   - NDK: Not required (pure Kotlin / JVM codebase).
 
 ---
@@ -23,8 +27,8 @@ To build, run, and contribute to MadoGit, ensure your local development workstat
 Clone the repository and inspect the branch structure:
 
 ```bash
-git clone https://github.com/your-org/madogit.git
-cd madogit
+git clone https://github.com/gininaba/MadoGit.git
+cd MadoGit
 ```
 
 ### 2. JDK Verification

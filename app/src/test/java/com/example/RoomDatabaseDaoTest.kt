@@ -129,10 +129,14 @@ class RoomDatabaseDaoTest {
         // Mark notif1 as read
         notifDao.markAsRead("notif_1")
         assertEquals(1, notifDao.getUnreadCountFlow().first())
+        val updatedNotif1 = notifDao.getNotificationById("notif_1")
+        assertTrue(updatedNotif1?.isRead == true)
 
         // Mark all as read
         notifDao.markAllAsRead()
         assertEquals(0, notifDao.getUnreadCountFlow().first())
+        val updatedNotif2 = notifDao.getNotificationById("notif_2")
+        assertTrue(updatedNotif2?.isRead == true)
     }
 
     @Test

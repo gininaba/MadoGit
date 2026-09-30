@@ -42,6 +42,22 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.material.icons.automirrored.filled.CallMerge
+import androidx.compose.material.icons.filled.Adjust
+import androidx.compose.material.icons.filled.Cancel
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.LocalOffer
+import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.draw.rotate
+
 @Composable
 fun StatusBadge(
     text: String,
@@ -68,19 +84,71 @@ fun StatusBadge(
             Pair(MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.onSurfaceVariant)
     }
 
-    Box(
+    val icon: ImageVector? = when {
+        actionState?.uppercase() in listOf("FAILED", "FAILURE", "ERROR", "TIMED_OUT") -> Icons.Default.Cancel
+        actionState?.uppercase() in listOf("SUCCESS", "PASSED") -> Icons.Default.CheckCircle
+        actionState?.uppercase() == "MERGED" -> Icons.AutoMirrored.Filled.CallMerge
+        actionState?.uppercase() == "REVIEW_REQUESTED" || text.contains("review", ignoreCase = true) -> Icons.Default.Visibility
+        category.equals("PR", ignoreCase = true) -> Icons.AutoMirrored.Filled.CallMerge
+        category.equals("ISSUE", ignoreCase = true) -> Icons.Default.Adjust
+        category.equals("WORKFLOW", ignoreCase = true) -> Icons.Default.PlayCircle
+        category.equals("RELEASE", ignoreCase = true) -> Icons.Default.LocalOffer
+        else -> null
+    }
+
+    val badgeText = when {
+        text.startsWith("WORKFLOW ", ignoreCase = true) -> text.substringAfter(" ").trim()
+        text.startsWith("PR ", ignoreCase = true) -> text.substringAfter(" ").trim()
+        text.startsWith("ISSUE ", ignoreCase = true) -> text.substringAfter(" ").trim()
+        else -> text
+    }.ifEmpty { text }
+
+    Row(
         modifier = modifier
             .clip(MaterialTheme.shapes.small)
             .background(bgColor)
             .border(1.dp, textColor.copy(alpha = 0.25f), MaterialTheme.shapes.small)
-            .padding(horizontal = 8.dp, vertical = 3.dp)
+            .padding(horizontal = 7.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
+        if (icon != null) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = textColor,
+                modifier = Modifier.size(12.dp)
+            )
+        }
         Text(
-            text = text,
+            text = badgeText,
             color = textColor,
             style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.SemiBold
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            softWrap = false
         )
+    }
+}
+
+fun formatRelativeTime(timestamp: Long): String {
+    val now = System.currentTimeMillis()
+    val diff = (now - timestamp).coerceAtLeast(0)
+    val seconds = diff / 1000
+    val minutes = seconds / 60
+    val hours = minutes / 60
+    val days = hours / 24
+
+    return when {
+        seconds < 60 -> "Just now"
+        minutes < 60 -> "${minutes}m ago"
+        hours < 24 -> "${hours}h ago"
+        days == 1L -> "Yesterday"
+        days < 7 -> "${days}d ago"
+        else -> {
+            val date = java.util.Date(timestamp)
+            java.text.SimpleDateFormat("MMM d", java.util.Locale.getDefault()).format(date)
+        }
     }
 }
 
@@ -211,24 +279,28 @@ fun SyncButton(
     onSyncClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val infiniteTransition = rememberInfiniteTransition(label = "sync_spin")
+    val angle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "sync_rotation"
+    )
+
     IconButton(
         onClick = onSyncClick,
         enabled = !isSyncing,
         modifier = modifier.testTag("sync_action_button")
     ) {
-        if (isSyncing) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(20.dp),
-                color = MaterialTheme.colorScheme.primary,
-                strokeWidth = 2.dp
-            )
-        } else {
-            Icon(
-                imageVector = Icons.Default.Sync,
-                contentDescription = "Sync GitHub now",
-                tint = MaterialTheme.colorScheme.primary
-            )
-        }
+        Icon(
+            imageVector = Icons.Default.Sync,
+            contentDescription = if (isSyncing) "Syncing with GitHub..." else "Sync GitHub now",
+            tint = if (isSyncing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary,
+            modifier = if (isSyncing) Modifier.rotate(angle) else Modifier
+        )
     }
 }
 

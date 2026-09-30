@@ -52,13 +52,36 @@ class MainViewModel(
     private val _selectedCategory = MutableStateFlow("ALL")
     val selectedCategory: StateFlow<String> = _selectedCategory.asStateFlow()
 
+    private val _notificationSearchQuery = MutableStateFlow("")
+    val notificationSearchQuery: StateFlow<String> = _notificationSearchQuery.asStateFlow()
+
+    private val _unreadOnlyFilter = MutableStateFlow(false)
+    val unreadOnlyFilter: StateFlow<Boolean> = _unreadOnlyFilter.asStateFlow()
+
     val filteredNotifications: StateFlow<List<GitHubNotificationEntity>> =
-        combine(repository.allNotifications, _selectedCategory) { notifs, category ->
-            if (category == "ALL") {
-                notifs
-            } else {
-                notifs.filter { it.category.equals(category, ignoreCase = true) }
+        combine(
+            repository.allNotifications,
+            _selectedCategory,
+            _unreadOnlyFilter,
+            _notificationSearchQuery
+        ) { notifs, category, unreadOnly, query ->
+            var result = notifs
+            if (category != "ALL") {
+                result = result.filter { it.category.equals(category, ignoreCase = true) }
             }
+            if (unreadOnly) {
+                result = result.filter { !it.isRead }
+            }
+            if (query.isNotBlank()) {
+                val q = query.trim()
+                result = result.filter {
+                    it.title.contains(q, ignoreCase = true) ||
+                            it.repoFullName.contains(q, ignoreCase = true) ||
+                            it.author.contains(q, ignoreCase = true) ||
+                            it.body.contains(q, ignoreCase = true)
+                }
+            }
+            result
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Repositories Search & Filter State
@@ -91,6 +114,18 @@ class MainViewModel(
 
     fun setNotificationCategory(category: String) {
         _selectedCategory.value = category
+    }
+
+    fun setNotificationSearchQuery(query: String) {
+        _notificationSearchQuery.value = query
+    }
+
+    fun toggleUnreadOnlyFilter() {
+        _unreadOnlyFilter.value = !_unreadOnlyFilter.value
+    }
+
+    fun setUnreadOnlyFilter(enabled: Boolean) {
+        _unreadOnlyFilter.value = enabled
     }
 
     fun setRepoSearchQuery(query: String) {

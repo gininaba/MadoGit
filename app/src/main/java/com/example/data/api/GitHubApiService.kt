@@ -11,10 +11,12 @@ import com.example.data.api.models.GitHubUserDto
 import com.example.data.api.models.GitHubWorkflowRunsResponse
 import com.example.data.api.models.OAuthTokenResponse
 import retrofit2.Response
+import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Headers
 import retrofit2.http.PATCH
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
 import retrofit2.http.Url
@@ -40,6 +42,11 @@ interface GitHubApiService {
     @PATCH("notifications/threads/{thread_id}")
     suspend fun markNotificationAsRead(
         @Path("thread_id") threadId: String
+    ): Response<Unit>
+
+    @PUT("notifications")
+    suspend fun markAllNotificationsAsRead(
+        @Body body: Map<String, Boolean> = mapOf("read" to true)
     ): Response<Unit>
 
     @GET("repos/{owner}/{repo}/events")

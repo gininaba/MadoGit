@@ -1,5 +1,9 @@
 # MadoGit Architecture Specification
 
+> [!IMPORTANT]
+> **Project Status: Experimental**
+> MadoGit is currently under active, experimental development. Architecture components and schema models are subject to iterative refinements.
+
 ## Overview
 
 MadoGit is built as an offline-first, reactive Android application utilizing modern Android architecture components, Jetpack Compose, Material You (Material 3 Dynamic Color), Room Database, and Android WorkManager.
@@ -81,10 +85,10 @@ The presentation layer is built entirely in **Jetpack Compose** using declarativ
 - **MainViewModel**: Centralizes application state management. Exposes immutable `StateFlow` streams (`repositories`, `notifications`, `assistantSummary`, `syncStatus`, `rateLimitInfo`, `preferences`). All user actions trigger asynchronous coroutine jobs that execute within `viewModelScope`.
 - **Navigation**: Managed via `AppNavigation.kt` utilizing typed destinations (`NavDestination`). Features responsive bottom navigation on standard displays and adaptive rails for wide-screen or foldable form factors.
 - **Components**:
-  - `DashboardScreen`: Unified activity stream, rate-limit gauge, unread metrics, and quick-action bar.
+  - `DashboardScreen`: Edge-to-edge profile card with integrated one-tap sync, rate-limit status, activity metrics, and chronological timeline.
   - `AssistantScreen`: Priority triage displaying items needing direct action (pending reviews, assigned issues, failed CI runs).
   - `RepositoriesScreen`: Searchable list of user and organization repositories with fine-grained monitoring toggles.
-  - `NotificationsScreen`: Searchable, filterable event archive with category chips and batch operations.
+  - `NotificationsScreen`: Searchable, filterable event archive with edge-to-edge search and category chips.
   - `SettingsScreen`: Channel configuration, sync frequency selection, network constraints, theme customization, and diagnostics.
   - `AuthScreen`: Multi-mode authentication supporting Personal Access Tokens and OAuth flow.
   - `OnboardingScreen`: First-run guidance explaining permission requirements and notification benefits.

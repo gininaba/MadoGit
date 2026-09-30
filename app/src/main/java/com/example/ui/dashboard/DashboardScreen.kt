@@ -22,10 +22,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PlayArrow
@@ -34,8 +37,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -63,10 +66,8 @@ import com.example.ui.components.EmptyStateView
 import com.example.ui.components.OfflineBanner
 import com.example.ui.components.StatusBadge
 import com.example.ui.components.SyncButton
+import com.example.ui.components.formatRelativeTime
 import com.example.ui.components.openExternalUrl
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 @Composable
 fun DashboardScreen(
@@ -93,35 +94,6 @@ fun DashboardScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // App Top Bar
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceContainer)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "MadoGit",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = if (isOffline) "Offline mode" else "Rate limit: ${rateLimitInfo.first}/${rateLimitInfo.second}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (isOffline) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            SyncButton(
-                isSyncing = isSyncing,
-                onSyncClick = { viewModel.triggerSync(context) }
-            )
-        }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-
         OfflineBanner(
             isOffline = isOffline,
             onRetry = { viewModel.triggerSync(context) }
@@ -137,6 +109,10 @@ fun DashboardScreen(
                 AccountCard(
                     authState = authState,
                     monitoredCount = monitoredCount,
+                    isSyncing = isSyncing,
+                    onSyncClick = { viewModel.triggerSync(context) },
+                    rateLimitInfo = rateLimitInfo,
+                    isOffline = isOffline,
                     onManageReposClick = onNavigateToRepositories,
                     onSignInClick = { viewModel.disconnect() }
                 )
@@ -225,6 +201,10 @@ fun DashboardScreen(
 private fun AccountCard(
     authState: AuthState,
     monitoredCount: Int,
+    isSyncing: Boolean,
+    onSyncClick: () -> Unit,
+    rateLimitInfo: Pair<Int, Int>,
+    isOffline: Boolean,
     onManageReposClick: () -> Unit,
     onSignInClick: () -> Unit = {}
 ) {
@@ -280,37 +260,92 @@ private fun AccountCard(
                             color = MaterialTheme.colorScheme.primary
                         )
                         Spacer(modifier = Modifier.height(4.dp))
-                        Surface(
-                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            shape = MaterialTheme.shapes.small,
-                            modifier = Modifier
-                                .clip(MaterialTheme.shapes.small)
-                                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.small)
-                                .clickable { onManageReposClick() }
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                shape = MaterialTheme.shapes.small,
+                                modifier = Modifier
+                                    .clip(MaterialTheme.shapes.small)
+                                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.small)
+                                    .clickable { onManageReposClick() }
                             ) {
-                                Icon(Icons.Default.Source, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "$monitoredCount repos monitored",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Source, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(13.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "$monitoredCount repos",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+
+                            Surface(
+                                color = if (isOffline) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                                shape = MaterialTheme.shapes.small,
+                                modifier = Modifier
+                                    .clip(MaterialTheme.shapes.small)
+                                    .border(
+                                        1.dp,
+                                        if (isOffline) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outlineVariant,
+                                        MaterialTheme.shapes.small
+                                    )
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (isOffline) {
+                                        Icon(
+                                            imageVector = Icons.Default.CloudOff,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.error,
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "Offline",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onErrorContainer
+                                        )
+                                    } else {
+                                        Text(
+                                            text = "API: ${rateLimitInfo.first}/${rateLimitInfo.second}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
 
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = "Manage Repos",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier
-                            .size(20.dp)
-                            .clickable { onManageReposClick() }
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        SyncButton(
+                            isSyncing = isSyncing,
+                            onSyncClick = onSyncClick
+                        )
+                        IconButton(
+                            onClick = onManageReposClick,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = "Manage Repos",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
                 }
                 else -> {
                     Column(modifier = Modifier.weight(1f)) {
@@ -327,15 +362,24 @@ private fun AccountCard(
                         )
                     }
 
-                    Button(
-                        onClick = onSignInClick,
-                        shape = MaterialTheme.shapes.small,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary
-                        )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text("Connect", fontSize = 12.sp)
+                        SyncButton(
+                            isSyncing = isSyncing,
+                            onSyncClick = onSyncClick
+                        )
+                        Button(
+                            onClick = onSignInClick,
+                            shape = MaterialTheme.shapes.small,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            )
+                        ) {
+                            Text("Connect", fontSize = 12.sp)
+                        }
                     }
                 }
             }
@@ -545,13 +589,18 @@ fun TimelineEventCard(
     onMarkReadClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val isUnread = !notification.isRead
+
     Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isUnread) MaterialTheme.colorScheme.surfaceContainerHigh
+            else MaterialTheme.colorScheme.surfaceContainer
+        ),
         shape = MaterialTheme.shapes.medium,
         border = BorderStroke(
-            1.dp,
-            if (!notification.isRead) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-            else MaterialTheme.colorScheme.outlineVariant
+            width = if (isUnread) 1.5.dp else 1.dp,
+            color = if (isUnread) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
         ),
         modifier = modifier
             .fillMaxWidth()
@@ -560,18 +609,47 @@ fun TimelineEventCard(
             .testTag("timeline_event_card_${notification.id}")
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
+            // Header Row: Unread dot, Avatar, Repo, StatusBadge, Timestamp
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    if (isUnread) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+
+                    if (!notification.avatarUrl.isNullOrBlank()) {
+                        AsyncImage(
+                            model = notification.avatarUrl,
+                            contentDescription = notification.author,
+                            modifier = Modifier
+                                .size(18.dp)
+                                .clip(CircleShape)
+                                .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape),
+                            contentScale = ContentScale.Crop
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+
                     Text(
                         text = notification.repoFullName,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     StatusBadge(
@@ -581,20 +659,23 @@ fun TimelineEventCard(
                     )
                 }
 
+                Spacer(modifier = Modifier.width(8.dp))
+
                 Text(
-                    text = formatTimestamp(notification.timestamp),
+                    text = formatRelativeTime(notification.timestamp),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1
                 )
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             Text(
                 text = notification.title,
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = if (!notification.isRead) FontWeight.Bold else FontWeight.Medium,
+                fontWeight = if (isUnread) FontWeight.Bold else FontWeight.Medium,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -610,7 +691,7 @@ fun TimelineEventCard(
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -618,38 +699,72 @@ fun TimelineEventCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Actor: @${notification.author}",
+                    text = "@${notification.author}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                if (!notification.isRead) {
-                    Text(
-                        text = "Mark as read",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (isUnread) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            shape = MaterialTheme.shapes.small,
+                            modifier = Modifier
+                                .clickable { onMarkReadClick() }
+                                .border(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.3f), MaterialTheme.shapes.small)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Mark Read",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        shape = MaterialTheme.shapes.small,
                         modifier = Modifier
-                            .clickable { onMarkReadClick() }
-                            .padding(4.dp)
-                    )
+                            .clickable { onCardClick() }
+                            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.small)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Open",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
                 }
             }
         }
-    }
-}
-
-private fun formatTimestamp(timestamp: Long): String {
-    val diff = System.currentTimeMillis() - timestamp
-    val seconds = diff / 1000
-    val minutes = seconds / 60
-    val hours = minutes / 60
-    val days = hours / 24
-
-    return when {
-        minutes < 1 -> "just now"
-        minutes < 60 -> "${minutes}m ago"
-        hours < 24 -> "${hours}h ago"
-        days < 7 -> "${days}d ago"
-        else -> SimpleDateFormat("MMM d", Locale.US).format(Date(timestamp))
     }
 }

@@ -64,6 +64,9 @@ interface NotificationDao {
     @Query("SELECT * FROM notifications WHERE isRead = 0 ORDER BY timestamp DESC")
     suspend fun getUnreadNotifications(): List<GitHubNotificationEntity>
 
+    @Query("SELECT * FROM notifications WHERE id = :id")
+    suspend fun getNotificationById(id: String): GitHubNotificationEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(notification: GitHubNotificationEntity)
 
@@ -81,6 +84,15 @@ interface NotificationDao {
 
     @Query("DELETE FROM notifications")
     suspend fun clearAllNotifications()
+
+    @Query("SELECT * FROM notifications ORDER BY timestamp DESC")
+    suspend fun getAllNotificationsSync(): List<GitHubNotificationEntity>
+
+    @Query("SELECT * FROM notifications WHERE targetUrl = :targetUrl LIMIT 1")
+    suspend fun getNotificationByTargetUrl(targetUrl: String): GitHubNotificationEntity?
+
+    @Query("SELECT * FROM notifications WHERE repoFullName = :repoFullName AND title = :title LIMIT 1")
+    suspend fun getNotificationByRepoAndTitle(repoFullName: String, title: String): GitHubNotificationEntity?
 
     @Query("SELECT COUNT(*) FROM notifications")
     suspend fun getTotalNotificationCount(): Int

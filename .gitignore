@@ -1,16 +1,29 @@
+# Built artifacts
 *.iml
 .gradle/
 .kotlin/
-/local.properties
-local.properties
-.idea/
-.vscode/
-.DS_Store
-*/.DS_Store
 build/
 **/build/
 /captures
 .externalNativeBuild
 .cxx
-.env
+
+# Local environment and secrets
+/local.properties
+local.properties
+secrets.properties
+.env*
+google-services.json
+
+# Keystores and signing keys
+*.jks
+*.keystore
 debug.keystore
+my-upload-key.jks
+
+# IDE and OS
+.idea/
+.vscode/
+.DS_Store
+*/.DS_Store
+Thumbs.db

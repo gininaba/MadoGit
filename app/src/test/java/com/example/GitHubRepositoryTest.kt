@@ -222,3 +222,6 @@ class GitHubRepositoryTest {
         assertEquals(0, notifDao.getTotalNotificationCount())
     }
 }
+
+
+

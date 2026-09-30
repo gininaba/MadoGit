@@ -15,13 +15,18 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Platform-Android_8.0+_(API_26+)-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Platform" />
-  <img src="https://img.shields.io/badge/Target_SDK-34_(Android_14)-34A853?style=flat-square" alt="Target SDK" />
-  <img src="https://img.shields.io/badge/Language-Kotlin_1.9+-7F52FF?style=flat-square&logo=kotlin&logoColor=white" alt="Language" />
-  <img src="https://img.shields.io/badge/UI-Jetpack_Compose_Material_You-4285F4?style=flat-square" alt="UI" />
+  <img src="https://img.shields.io/badge/Status-Experimental-orange?style=flat-square" alt="Status" />
+  <img src="https://img.shields.io/badge/Platform-Android_7.0+_(API_24+)-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Platform" />
+  <img src="https://img.shields.io/badge/Target_SDK-36_(Android_16)-34A853?style=flat-square" alt="Target SDK" />
+  <img src="https://img.shields.io/badge/Language-Kotlin_2.2+-7F52FF?style=flat-square&logo=kotlin&logoColor=white" alt="Language" />
+  <img src="https://img.shields.io/badge/UI-Jetpack_Compose_Material_3-4285F4?style=flat-square" alt="UI" />
   <img src="https://img.shields.io/badge/Architecture-MVVM_+_Offline--First-00BCD4?style=flat-square" alt="Architecture" />
   <img src="https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square" alt="License" />
 </p>
+
+> [!IMPORTANT]
+> **Project Status: Experimental**
+> MadoGit is currently under active, experimental development. Features, database schemas, and UI flows are subject to rapid iteration and refactoring. It is provided for personal testing, developer dogfooding, and community feedback. Contributions, bug reports, and suggestions are welcome.
 
 ---
 
@@ -124,8 +129,9 @@ graph TD
 ## 4. Core Features
 
 ### Connected Account Dashboard
-- Live GitHub user profile display (avatar, username, and name).
-- Real-time GitHub API rate-limit meter tracking remaining vs. limit (e.g. `4982/5000`) and reset countdown.
+- Edge-to-edge profile card anchoring the home feed with avatar, username, and display name.
+- Real-time GitHub API rate-limit chip (`API: 5000/5000` or `Offline` status) directly inside the profile card.
+- One-tap animated manual sync button cleanly integrated beside repository navigation.
 - Metric status cards: unread alerts, review requests, assigned issues, and failed workflows.
 - Chronological activity timeline with state badges and repository labels.
 
@@ -144,12 +150,13 @@ graph TD
 
 ### Notification History & Archive
 - Comprehensive, searchable event history stored locally in Room.
-- Category filtering chips: *Pull Requests*, *Issues*, *Workflows*, *Releases*, *Activity*.
+- Clean edge-to-edge search bar and category filtering chips: *Pull Requests*, *Issues*, *Workflows*, *Releases*, *Activity*.
 - Read/unread indicators with individual mark-as-read, delete, and bulk-clear capabilities.
 
 ### Flexible Authentication Modes
 - **Personal Access Token (PAT)**: Instant setup supporting classic tokens (`ghp_...`) and fine-grained tokens (`github_pat_...`) with pre-configured scope templates.
 - **GitHub OAuth App Flow**: Full authorization code grant with custom callback scheme (`ghnotifier://oauth/callback`) for organizations requiring OAuth app governance.
+- **Zero Third-Party Secrets**: No external servers, proxy services, or third-party AI keys required. The application communicates directly with `api.github.com`.
 
 ---
 
@@ -203,13 +210,16 @@ MadoGit requests only the minimum set of scopes required for notification triage
 
 ### Prerequisites
 - JDK 17 (Azul Zulu, OpenJDK, or Eclipse Temurin)
-- Android SDK Platform 34
+- Android SDK Platform 34+ (compileSdk 36)
 - Android Studio Hedgehog (2023.1.1) or newer
+
+> [!NOTE]
+> No `.env` file, third-party backend, or external API keys are required to build or run MadoGit. All operations connect directly to the public GitHub API via your own token or OAuth credentials configured at runtime.
 
 ### Clone the Repository
 ```bash
-git clone https://github.com/your-org/madogit.git
-cd madogit
+git clone https://github.com/gininaba/MadoGit.git
+cd MadoGit
 chmod +x gradlew
 ```
 
