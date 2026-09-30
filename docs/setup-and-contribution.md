@@ -9,7 +9,7 @@
 To build, run, and contribute to MadoGit, ensure your local development workstation meets the following specifications:
 
 - **Operating System**: macOS, Linux, or Windows 10/11 with WSL2.
-- **Java Development Kit**: JDK 17 (Azul Zulu, OpenJDK, or Eclipse Temurin recommended).
+- **Java Development Kit**: JDK 17 to JDK 21 LTS (Azul Zulu, OpenJDK, or Eclipse Temurin recommended; Gradle daemon JVM toolchain is pinned to Java 21 LTS).
 - **Android Studio**: Android Studio Hedgehog (2023.1.1) or newer (Koala / Ladybug recommended).
 - **Android SDK Requirements**:
   - `compileSdk`: 36 (Android 16)
@@ -33,18 +33,20 @@ cd MadoGit
 
 ### 2. JDK Verification
 
-Confirm that JDK 17 is active in your current shell:
+Confirm that JDK 17 or JDK 21 is active in your current shell:
 
 ```bash
 java -version
 ```
 
-If multiple Java versions exist on your machine, configure `JAVA_HOME`:
+If multiple Java versions exist on your machine, configure `JAVA_HOME` to a compatible LTS release:
 
 ```bash
 # macOS (zsh)
-export JAVA_HOME=$(/usr/libexec/java_home -v 17)
+export JAVA_HOME=$(/usr/libexec/java_home -v 21 2>/dev/null || /usr/libexec/java_home -v 17)
 ```
+
+The Gradle daemon is automatically configured to execute using Java 21 LTS via `gradle/gradle-daemon-jvm.properties` to ensure full compatibility with the Android Gradle Plugin and Kotlin compiler.
 
 ### 3. Gradle Wrapper Permissions
 

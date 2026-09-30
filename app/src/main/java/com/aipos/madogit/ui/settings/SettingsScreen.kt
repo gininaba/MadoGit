@@ -1,6 +1,8 @@
 package com.aipos.madogit.ui.settings
 
+import android.content.Intent
 import android.os.Build
+import android.provider.Settings as AndroidSettings
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -32,6 +34,7 @@ import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -61,6 +64,7 @@ import androidx.compose.ui.unit.sp
 import com.aipos.madogit.data.auth.AuthState
 import com.aipos.madogit.data.repository.ThemeMode
 import com.aipos.madogit.ui.MainViewModel
+import com.aipos.madogit.ui.components.RateLimitGauge
 import com.aipos.madogit.ui.components.openExternalUrl
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -269,6 +273,10 @@ fun SettingsScreen(
                             )
                         }
                     }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(vertical = 12.dp))
+
+                    PalettePreviewRow()
                 }
             }
 
@@ -397,6 +405,44 @@ fun SettingsScreen(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
+                    // System Notification Settings Shortcut
+                    Button(
+                        onClick = {
+                            try {
+                                val intent = Intent(AndroidSettings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                    putExtra(AndroidSettings.EXTRA_APP_PACKAGE, context.packageName)
+                                }
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Could not open system notification settings", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            contentColor = MaterialTheme.colorScheme.onSurface
+                        ),
+                        shape = MaterialTheme.shapes.small,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("system_notification_settings_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "System Notification Channels",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
                     // Test Notification Button
                     Button(
                         onClick = {
@@ -506,6 +552,16 @@ fun SettingsScreen(
             // 5. DIAGNOSTICS & DEBUG
             item {
                 SettingsSectionCard(title = "Diagnostics & API Quota", icon = Icons.Default.BugReport) {
+                    RateLimitGauge(
+                        remaining = rateLimitInfo.first,
+                        limit = rateLimitInfo.second,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp)
+                    )
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(bottom = 10.dp))
+
                     DiagnosticItem("API Rate Limit Remaining", "${rateLimitInfo.first} / ${rateLimitInfo.second}")
                     DiagnosticItem("Monitored Repositories", "$monitoredCount repos")
                     DiagnosticItem(
@@ -790,5 +846,49 @@ private fun DiagnosticItem(
             color = MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.SemiBold
         )
+    }
+}
+
+@Composable
+private fun PalettePreviewRow() {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = "Active Palette Swatches",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.SemiBold
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            val swatches = listOf(
+                Triple("Primary", MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.onPrimary),
+                Triple("Secondary", MaterialTheme.colorScheme.secondary, MaterialTheme.colorScheme.onSecondary),
+                Triple("Tertiary", MaterialTheme.colorScheme.tertiary, MaterialTheme.colorScheme.onTertiary),
+                Triple("Surface", MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.onSurface),
+                Triple("Error", MaterialTheme.colorScheme.error, MaterialTheme.colorScheme.onError),
+            )
+            swatches.forEach { (name, bg, fg) ->
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp)
+                        .clip(MaterialTheme.shapes.small)
+                        .background(bg)
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), MaterialTheme.shapes.small),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = name,
+                        color = fg,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1
+                    )
+                }
+            }
+        }
     }
 }

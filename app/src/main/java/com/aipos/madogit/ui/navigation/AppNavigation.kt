@@ -1,6 +1,11 @@
 package com.aipos.madogit.ui.navigation
 
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -31,6 +36,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -49,6 +56,7 @@ fun AppNavigation(
     viewModel: MainViewModel,
     modifier: Modifier = Modifier
 ) {
+    val haptic = LocalHapticFeedback.current
     val authState by viewModel.authState.collectAsState()
     val isFirstLaunch by viewModel.isFirstLaunch.collectAsState()
     val unreadCount by viewModel.unreadCount.collectAsState()
@@ -89,21 +97,36 @@ fun AppNavigation(
             bottomBar = {
                 if (!isExpanded) {
                     NavigationBar(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainer
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                        tonalElevation = 3.dp
                     ) {
                         NavDestination.entries.forEach { destination ->
                             val isSelected = currentDestination == destination
                             NavigationBarItem(
                                 selected = isSelected,
-                                onClick = { currentDestination = destination },
-                                label = { Text(destination.title, fontSize = 11.sp, fontWeight = if (isSelected) androidx.compose.ui.text.font.FontWeight.SemiBold else androidx.compose.ui.text.font.FontWeight.Normal) },
+                                onClick = {
+                                    if (currentDestination != destination) {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        currentDestination = destination
+                                    }
+                                },
+                                label = {
+                                    Text(
+                                        text = destination.title,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSelected) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Medium
+                                    )
+                                },
                                 icon = {
                                     when {
                                         destination == NavDestination.NOTIFICATIONS && unreadCount > 0 -> {
                                             BadgedBox(
                                                 badge = {
-                                                    Badge(containerColor = MaterialTheme.colorScheme.primary) {
-                                                        Text("$unreadCount", color = MaterialTheme.colorScheme.onPrimary, fontSize = 10.sp)
+                                                    Badge(
+                                                        containerColor = MaterialTheme.colorScheme.primary,
+                                                        contentColor = MaterialTheme.colorScheme.onPrimary
+                                                    ) {
+                                                        Text("$unreadCount", fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                                                     }
                                                 }
                                             ) {
@@ -113,8 +136,11 @@ fun AppNavigation(
                                         destination == NavDestination.ASSISTANT && assistantSummary.totalActionableItems > 0 -> {
                                             BadgedBox(
                                                 badge = {
-                                                    Badge(containerColor = MaterialTheme.colorScheme.tertiary) {
-                                                        Text("${assistantSummary.totalActionableItems}", color = MaterialTheme.colorScheme.onTertiary, fontSize = 10.sp)
+                                                    Badge(
+                                                        containerColor = MaterialTheme.colorScheme.tertiary,
+                                                        contentColor = MaterialTheme.colorScheme.onTertiary
+                                                    ) {
+                                                        Text("${assistantSummary.totalActionableItems}", fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                                                     }
                                                 }
                                             ) {
@@ -155,8 +181,19 @@ fun AppNavigation(
                             val isSelected = currentDestination == destination
                             NavigationRailItem(
                                 selected = isSelected,
-                                onClick = { currentDestination = destination },
-                                label = { Text(destination.title, fontSize = 11.sp, fontWeight = if (isSelected) androidx.compose.ui.text.font.FontWeight.SemiBold else androidx.compose.ui.text.font.FontWeight.Normal) },
+                                onClick = {
+                                    if (currentDestination != destination) {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        currentDestination = destination
+                                    }
+                                },
+                                label = {
+                                    Text(
+                                        text = destination.title,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSelected) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Medium
+                                    )
+                                },
                                 icon = { Icon(destination.icon, contentDescription = destination.title) },
                                 colors = NavigationRailItemDefaults.colors(
                                     selectedIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -171,27 +208,27 @@ fun AppNavigation(
 
                     Box(modifier = Modifier.weight(1f)) {
                         ScreenContent(
+                            destination = currentDestination,
+                            viewModel = viewModel,
+                            onNavigate = { currentDestination = it }
+                        )
+                    }
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                ) {
+                    ScreenContent(
                         destination = currentDestination,
                         viewModel = viewModel,
                         onNavigate = { currentDestination = it }
                     )
                 }
             }
-        } else {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-            ) {
-                ScreenContent(
-                    destination = currentDestination,
-                    viewModel = viewModel,
-                    onNavigate = { currentDestination = it }
-                )
-            }
         }
     }
-}
 }
 
 @Composable
@@ -200,7 +237,20 @@ private fun ScreenContent(
     viewModel: MainViewModel,
     onNavigate: (NavDestination) -> Unit
 ) {
-    Crossfade(targetState = destination, label = "screen_crossfade") { target ->
+    AnimatedContent(
+        targetState = destination,
+        transitionSpec = {
+            val forward = targetState.ordinal > initialState.ordinal
+            if (forward) {
+                (slideInHorizontally { width -> width / 4 } + fadeIn()) togetherWith
+                    (slideOutHorizontally { width -> -width / 4 } + fadeOut())
+            } else {
+                (slideInHorizontally { width -> -width / 4 } + fadeIn()) togetherWith
+                    (slideOutHorizontally { width -> width / 4 } + fadeOut())
+            }
+        },
+        label = "screen_animated_content"
+    ) { target ->
         when (target) {
             NavDestination.DASHBOARD -> DashboardScreen(
                 viewModel = viewModel,
@@ -218,3 +268,4 @@ private fun ScreenContent(
         }
     }
 }
+

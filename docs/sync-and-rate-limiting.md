@@ -18,7 +18,7 @@ Every HTTP response received by MadoGit passes through OkHttp network intercepto
 - `X-RateLimit-Remaining`: Number of requests remaining in the current window.
 - `X-RateLimit-Reset`: Unix epoch timestamp indicating when the quota resets.
 
-This data is exposed via `StateFlow` to the UI dashboard as a live gauge and cached in `PreferencesRepository`.
+This data is exposed via `StateFlow` to the UI through the `RateLimitGauge` composable embedded in both the Dashboard Account Card and Settings Diagnostics section, and is cached in `PreferencesRepository`.
 
 ### 2. Adaptive Safety Threshold
 

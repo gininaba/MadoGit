@@ -130,28 +130,47 @@ graph TD
 
 ### Connected Account Dashboard
 - Edge-to-edge profile card anchoring the home feed with avatar, username, and display name.
-- Real-time GitHub API rate-limit chip (`API: 5000/5000` or `Offline` status) directly inside the profile card.
+- Real-time GitHub API rate-limit meter (`RateLimitGauge`) displaying available quota, threshold alerts, and reset countdown directly inside the profile card.
+- Native Pull-to-Refresh (`MadoPullToRefreshBox`) gesture allowing seamless feed updates.
 - One-tap animated manual sync button cleanly integrated beside repository navigation.
 - Metric status cards: unread alerts, review requests, assigned issues, and failed workflows.
-- Chronological activity timeline with state badges and repository labels.
+- Chronological activity timeline with animated item insertions (`Modifier.animateItem()`), state badges, and repository labels.
 
 ### Intelligent Priority Assistant
 - Specialized triage view filtering actionable items requiring developer attention:
   - Pull requests awaiting your code review.
   - Open issues directly assigned to your handle.
   - GitHub Actions CI/CD workflows terminating with failure conclusion.
-- Single-tap actions to open pull requests, issues, or workflow runs directly in your preferred browser or GitHub app.
+- Filter chips for rapid triage switching: *All*, *Reviews*, *Issues*, and *CI Runs* with live counter indicators.
+- Celebratory "Inbox Zero" state displayed when all pending triage tasks have been resolved.
+- Pull-to-refresh gesture and animated task cards with single-tap actions to open pull requests, issues, or workflow runs directly in your preferred browser or GitHub app.
 
 ### Repository Monitoring Engine
-- Full repository explorer querying your personal, starred, and organization repositories.
-- Individual monitoring toggles (`[ ON / OFF ]`) to track high-priority repositories while ignoring noisy or inactive projects.
+- Full repository explorer querying personal, starred, and organization repositories.
+- Quick filter chips: *All*, *Monitored*, *Private*, and *Public*.
+- Programming language indicators (`LanguageDot`) displaying official GitHub language colors alongside repository names.
+- Monospace branch tags (`main`, `master`, custom branches) rendered using developer code typography.
+- Individual monitoring toggles with tactile haptic feedback to track high-priority repositories while ignoring noisy or inactive projects.
 - "Monitor All" bulk toggle for rapid setup.
 - Active vs. inactive polling prioritization to minimize API traffic.
+- Pull-to-refresh gesture for on-demand repository list synchronization.
 
-### Notification History & Archive
+### Notification History & Gesture Archive
 - Comprehensive, searchable event history stored locally in Room.
+- Chronological smart date grouping with headers: *Today*, *Yesterday*, *This Week*, and *Earlier*.
+- Bidirectional Swipe-to-Dismiss (`MadoSwipeToDismissItem`) with directional haptic feedback:
+  - Swipe Right: Surface highlighted in primary dynamic color with checkmark icon to mark item as read.
+  - Swipe Left: Surface highlighted in error dynamic color with trash icon to dismiss/archive notification with an instant Undo snackbar.
 - Clean edge-to-edge search bar and category filtering chips: *Pull Requests*, *Issues*, *Workflows*, *Releases*, *Activity*.
 - Read/unread indicators with individual mark-as-read, delete, and bulk-clear capabilities.
+- Pull-to-refresh support across the entire notification feed.
+
+### Comprehensive Settings & Diagnostics
+- Live Monet Dynamic Palette Swatches preview (*Primary*, *Secondary*, *Tertiary*, *Surface*, *Error*) dynamically reflecting wallpaper colors and theme toggles in real time.
+- Direct system shortcut button opening Android System Notification Channel Settings (`Settings.ACTION_APP_NOTIFICATION_SETTINGS`) for granular OS-level channel control.
+- Integrated `RateLimitGauge` diagnostic widget displaying active API quota and time until replenishment.
+- Configurable background polling frequencies (15 min, 30 min, 1 hour, 2 hours, 6 hours, or manual only) and Wi-Fi-only constraints.
+- Local cache clearing and diagnostic audit items.
 
 ### Flexible Authentication Modes
 - **Personal Access Token (PAT)**: Instant setup supporting classic tokens (`ghp_...`) and fine-grained tokens (`github_pat_...`) with pre-configured scope templates.
@@ -176,17 +195,21 @@ MadoGit creates dedicated notification channels on Android 8.0+ (API 26+) to ens
 - Direct notification actions: "Open on GitHub" (browser/app) and "View in App".
 - Notification grouping by repository to prevent status-bar clutter.
 - Full compliance with Android 13+ (API 33+) `POST_NOTIFICATIONS` runtime permission model.
+- Settings screen direct link to Android system notification channel settings.
 
 ---
 
 ## 6. Material You Theming Engine
 
-MadoGit is built from the ground up for **Material You (Material 3 Dynamic Color)**:
+MadoGit is built from the ground up for **Material You (Material 3 Dynamic Color & Expressive Guidelines)**:
 
 - **Monet Dynamic Theming**: On Android 12+ (API 31+), the application dynamically extracts color palettes from the user's wallpaper.
-- **Harmonized Fallbacks**: For Android versions below 12 or when dynamic color is disabled, MadoGit provides a developer-focused dark palette with slate surfaces (`#0D1117`, `#161B22`) and GitHub accent tones.
-- **User Preference Control**: Settings screen includes an explicit toggle allowing users to enable or disable dynamic theming at any time.
-- **Surface Elevation Hierarchy**: Uses Material 3 tonal container tokens (`surfaceContainerLow`, `surfaceContainer`, `surfaceContainerHigh`) to achieve depth and contrast without harsh borders.
+- **Harmonized Fallbacks**: For Android versions below 12 or when dynamic color is disabled, MadoGit provides a developer-focused palette with sapphire blue (`#58A6FF`), emerald green (`#3FB950`), amethyst purple (`#BC8CFF`), crimson red (`#F85149`), and warm amber tones.
+- **Surface Elevation Hierarchy**: Uses Material 3 tonal container tokens (`surfaceContainerLowest` through `surfaceContainerHighest`) to achieve natural depth and contrast without harsh borders.
+- **M3 Expressive Shape Scale**: Standardized corner curvature across components: Extra Small (`6.dp`), Small (`10.dp`), Medium (`16.dp`), Large (`22.dp`), and Extra Large (`28.dp`).
+- **Monospace Developer Typography**: Extension styles (`Typography.code` and `Typography.codeSmall`) using `FontFamily.Monospace` for git branch names, commit hashes, and code tokens.
+- **Fluid Navigation Transitions**: Tab switches feature `AnimatedContent` slide-and-fade page transitions with spring physics and tactile haptic feedback on selection.
+- **Live Swatch Verification**: Settings screen displays real-time color swatches demonstrating active primary, secondary, tertiary, surface, and error tokens.
 
 ---
 
@@ -209,7 +232,7 @@ MadoGit requests only the minimum set of scopes required for notification triage
 ## 8. Quickstart & Build Instructions
 
 ### Prerequisites
-- JDK 17 (Azul Zulu, OpenJDK, or Eclipse Temurin)
+- JDK 17 to JDK 21 LTS (Azul Zulu, OpenJDK, or Eclipse Temurin; Gradle daemon JVM toolchain configured to Java 21 LTS)
 - Android SDK Platform 34+ (compileSdk 36)
 - Android Studio Hedgehog (2023.1.1) or newer
 

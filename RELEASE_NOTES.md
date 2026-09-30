@@ -1,9 +1,45 @@
-# MadoGit v0.1.0-beta (Experimental Release)
+# MadoGit Release Notes
 
-MadoGit is a lightweight, developer-first personal GitHub notification assistant for Android. It monitors your repositories, pull requests, issues, and CI workflows with timely Android system push notifications, smart deduplication, and zero intermediate servers.
+## MadoGit v0.2.0-beta (Material You & UI/UX Expressive Revamp)
+
+This release delivers a comprehensive Material 3 Expressive UI and Material You revamp, introducing native mobile gestures, fluid screen transitions, smart notification grouping, and developer-focused visual tokens.
 
 > **Notice: Experimental Release**  
-> This is an early beta release intended for dogfooding, testing, and feedback. Features, UI components, and internal schemas are actively evolving.
+> This is an active beta release intended for dogfooding, testing, and feedback. Features, UI components, and internal schemas are continuously evolving.
+
+---
+
+### Highlights & Features in v0.2.0-beta
+
+#### Material 3 Expressive & Material You Theming
+- **Curated Developer Palette Tokens**: Enhanced fallback color tokens with sapphire blue (`#58A6FF`), emerald green (`#3FB950`), amethyst purple (`#BC8CFF`), crimson red (`#F85149`), and warm amber tones.
+- **Surface Elevation Spectrum**: Added full tonal container spectrum (`surfaceContainerLowest` through `surfaceContainerHighest`) for natural depth hierarchy.
+- **Expressive Shape Scale**: Standardized corner rounding across all components: Extra Small (`6.dp`), Small (`10.dp`), Medium (`16.dp`), Large (`22.dp`), and Extra Large (`28.dp`).
+- **Monospace Code Typography**: Added extension typography styles (`Typography.code` and `Typography.codeSmall`) using `FontFamily.Monospace` for commit SHAs, git branch names, and code syntax tokens.
+- **Live Monet Palette Swatches**: Added real-time interactive color swatches in Settings displaying active primary, secondary, tertiary, surface, and error tokens reflecting wallpaper extraction.
+
+#### Native Gestures & Micro-Interactions
+- **Pull-to-Refresh Gesture**: Integrated `MadoPullToRefreshBox` across all main feeds (Dashboard, Notifications, Assistant, Repositories) for one-swipe manual synchronization.
+- **Bidirectional Swipe-to-Dismiss**: Integrated `MadoSwipeToDismissItem` with directional haptic feedback in Notifications:
+  - Swipe Right: Surface highlighted in primary dynamic color with checkmark icon to mark item as read.
+  - Swipe Left: Surface highlighted in error dynamic color with trash icon to dismiss/archive notification with instant snackbar undo.
+- **Directional Haptic Feedback**: Tactile responses on tab switching, repository monitoring switches, and swipe threshold triggers.
+- **Animated List Transitions**: Integrated `Modifier.animateItem()` across activity feeds and triage task lists for smooth insertion and removal animations.
+
+#### Screen-by-Screen Upgrades
+- **Dashboard**: Embedded `RateLimitGauge` into the profile card showing real-time API quota, warning thresholds, and reset timer countdown.
+- **Notifications Screen**: Introduced smart chronological date grouping with clean section headers (*Today*, *Yesterday*, *This Week*, *Earlier*).
+- **Assistant Screen**: Added segmented triage filter chips (*All*, *Reviews*, *Issues*, *CI Runs*) with live item count badges and a celebratory "Inbox Zero" empty state.
+- **Repositories Screen**: Added quick filter chips (*All*, *Monitored*, *Private*, *Public*), programming language indicator dots (`LanguageDot`), and monospace branch tags.
+- **Settings Screen**: Added direct shortcut button launching Android System Notification Channel Settings (`Settings.ACTION_APP_NOTIFICATION_SETTINGS`) alongside the live Monet palette swatch row and rate limit gauge.
+- **Navigation**: Upgraded tab navigation to `AnimatedContent` slide-and-fade transitions with spring physics and dynamic unread badge indicators.
+
+#### Toolchain & Build Compatibility
+- Pinned Gradle daemon JVM toolchain to Java 21 LTS (`toolchainVersion=21` in `gradle/gradle-daemon-jvm.properties`), eliminating Groovy/ASM class file major version 69 bytecode errors when newer JDKs are present.
+
+---
+
+## MadoGit v0.1.0-beta (Experimental Release)
 
 ---
 

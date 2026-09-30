@@ -57,6 +57,13 @@ import com.aipos.madogit.ui.components.EmptyStateView
 import com.aipos.madogit.ui.components.StatusBadge
 import com.aipos.madogit.ui.components.SyncButton
 import com.aipos.madogit.ui.components.formatRelativeTime
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.aipos.madogit.ui.components.MadoPullToRefreshBox
 import com.aipos.madogit.ui.components.openExternalUrl
 
 @Composable
@@ -67,6 +74,16 @@ fun AssistantScreen(
     val context = LocalContext.current
     val summary by viewModel.assistantSummary.collectAsState()
     val syncStatus by viewModel.syncStatus.collectAsState()
+    var selectedTriageTab by remember { mutableIntStateOf(0) }
+
+    val filteredItems = remember(summary.topActionableItems, selectedTriageTab) {
+        when (selectedTriageTab) {
+            1 -> summary.topActionableItems.filter { it.category.equals("PR", ignoreCase = true) || it.actionState == "REVIEW_REQUESTED" }
+            2 -> summary.topActionableItems.filter { it.category.equals("ISSUE", ignoreCase = true) || it.actionState == "ASSIGNED" }
+            3 -> summary.topActionableItems.filter { it.category.equals("WORKFLOW", ignoreCase = true) || it.actionState?.uppercase() in listOf("FAILED", "FAILURE", "ERROR") }
+            else -> summary.topActionableItems
+        }
+    }
 
     Column(
         modifier = modifier
@@ -107,100 +124,138 @@ fun AssistantScreen(
             )
         }
 
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+        MadoPullToRefreshBox(
+            isRefreshing = syncStatus is com.aipos.madogit.data.repository.SyncStatus.Syncing,
+            onRefresh = { viewModel.triggerSync(context) },
+            modifier = Modifier.fillMaxSize()
         ) {
-            // Attention Banner
-            item {
-                val hasItems = summary.totalActionableItems > 0
-                val containerColor = if (hasItems) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.secondaryContainer
-                val contentColor = if (hasItems) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
-                val borderColor = if (hasItems) MaterialTheme.colorScheme.tertiary.copy(alpha = 0.4f) else MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f)
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Attention Banner
+                item {
+                    val hasItems = summary.totalActionableItems > 0
+                    val containerColor = if (hasItems) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.secondaryContainer
+                    val contentColor = if (hasItems) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
+                    val borderColor = if (hasItems) MaterialTheme.colorScheme.tertiary.copy(alpha = 0.4f) else MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f)
 
-                Surface(
-                    color = containerColor,
-                    shape = MaterialTheme.shapes.medium,
-                    border = BorderStroke(1.dp, borderColor),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("assistant_summary_card")
-                ) {
-                    Column(modifier = Modifier.padding(18.dp)) {
-                        Text(
-                            text = if (hasItems)
-                                "You have ${summary.totalActionableItems} items that may need your attention."
-                            else
-                                "All clear! You have 0 urgent items requiring attention.",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = contentColor,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        color = containerColor,
+                        shape = MaterialTheme.shapes.medium,
+                        border = BorderStroke(1.dp, borderColor),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("assistant_summary_card")
+                    ) {
+                        Column(modifier = Modifier.padding(18.dp)) {
+                            Text(
+                                text = if (hasItems)
+                                    "You have ${summary.totalActionableItems} items that may need your attention."
+                                else
+                                    "Inbox Zero! 0 urgent items requiring developer attention.",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = contentColor,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(10.dp))
 
-                        // Factual breakdown lines
-                        AssistantBreakdownRow(
-                            icon = Icons.Default.PlayArrow,
-                            text = "${summary.pendingReviewRequests} pull requests waiting for your review",
-                            iconColor = MaterialTheme.colorScheme.secondary
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        AssistantBreakdownRow(
-                            icon = Icons.Default.BugReport,
-                            text = "${summary.assignedIssues} issues assigned to you",
-                            iconColor = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        AssistantBreakdownRow(
-                            icon = Icons.Default.ErrorOutline,
-                            text = "${summary.failedWorkflows} failed GitHub Actions workflows",
-                            iconColor = MaterialTheme.colorScheme.error
-                        )
+                            // Factual breakdown lines
+                            AssistantBreakdownRow(
+                                icon = Icons.Default.PlayArrow,
+                                text = "${summary.pendingReviewRequests} pull requests waiting for your review",
+                                iconColor = MaterialTheme.colorScheme.secondary
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            AssistantBreakdownRow(
+                                icon = Icons.Default.BugReport,
+                                text = "${summary.assignedIssues} issues assigned to you",
+                                iconColor = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            AssistantBreakdownRow(
+                                icon = Icons.Default.ErrorOutline,
+                                text = "${summary.failedWorkflows} failed GitHub Actions workflows",
+                                iconColor = MaterialTheme.colorScheme.error
+                            )
+                        }
                     }
                 }
-            }
 
-            // Actionable Items List Header
-            item {
-                Text(
-                    text = "Actionable Tasks & Highlights",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-
-            if (summary.topActionableItems.isEmpty()) {
+                // Triage Segmented Filter Chips
                 item {
-                    EmptyStateView(
-                        icon = Icons.Default.CheckCircle,
-                        title = "No Pending Action Items",
-                        description = "Everything on your monitored repositories is up-to-date and passing CI.",
-                        actionButtonLabel = "Sync Latest",
-                        onActionClick = { viewModel.triggerSync(context) }
-                    )
-                }
-            } else {
-                items(summary.topActionableItems, key = { it.id }) { item ->
-                    ActionableTaskCard(
-                        item = item,
-                        onOpenUrl = {
-                            openExternalUrl(
-                                context,
-                                if (item.targetUrl.isNotBlank()) item.targetUrl
-                                else "https://github.com/${item.repoFullName}"
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val filters = listOf(
+                            Pair("All (${summary.totalActionableItems})", 0),
+                            Pair("Reviews (${summary.pendingReviewRequests})", 1),
+                            Pair("Issues (${summary.assignedIssues})", 2),
+                            Pair("CI Runs (${summary.failedWorkflows})", 3)
+                        )
+
+                        items(filters.size) { index ->
+                            val (title, tabIndex) = filters[index]
+                            val isSelected = selectedTriageTab == tabIndex
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { selectedTriageTab = tabIndex },
+                                label = {
+                                    Text(
+                                        text = title,
+                                        fontSize = 12.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                                    labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                ),
+                                shape = MaterialTheme.shapes.small
                             )
-                        },
-                        onMarkDone = {
-                            viewModel.markNotificationRead(item.id)
                         }
-                    )
+                    }
+                }
+
+                if (filteredItems.isEmpty()) {
+                    item {
+                        EmptyStateView(
+                            icon = Icons.Default.CheckCircle,
+                            title = if (summary.totalActionableItems == 0) "Inbox Zero Achieved!" else "No Items In This Filter",
+                            description = if (summary.totalActionableItems == 0)
+                                "Everything on your monitored repositories is up-to-date, reviewed, and passing CI."
+                            else "No items found under this triage category.",
+                            actionButtonLabel = "Sync Latest",
+                            onActionClick = { viewModel.triggerSync(context) }
+                        )
+                    }
+                } else {
+                    items(filteredItems, key = { it.id }) { item ->
+                        ActionableTaskCard(
+                            item = item,
+                            onOpenUrl = {
+                                openExternalUrl(
+                                    context,
+                                    if (item.targetUrl.isNotBlank()) item.targetUrl
+                                    else "https://github.com/${item.repoFullName}"
+                                )
+                            },
+                            onMarkDone = {
+                                viewModel.markNotificationRead(item.id)
+                            },
+                            modifier = Modifier.animateItem()
+                        )
+                    }
                 }
             }
         }
     }
 }
+
 
 @Composable
 private fun AssistantBreakdownRow(
@@ -228,13 +283,14 @@ private fun AssistantBreakdownRow(
 private fun ActionableTaskCard(
     item: GitHubNotificationEntity,
     onOpenUrl: () -> Unit,
-    onMarkDone: () -> Unit
+    onMarkDone: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         shape = MaterialTheme.shapes.medium,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .testTag("actionable_task_card_${item.id}")
     ) {

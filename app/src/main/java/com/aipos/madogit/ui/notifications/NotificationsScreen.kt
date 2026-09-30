@@ -71,11 +71,14 @@ import coil.compose.AsyncImage
 import com.aipos.madogit.data.database.entities.GitHubNotificationEntity
 import com.aipos.madogit.ui.MainViewModel
 import com.aipos.madogit.ui.components.EmptyStateView
+import com.aipos.madogit.ui.components.MadoPullToRefreshBox
+import com.aipos.madogit.ui.components.MadoSwipeToDismissItem
 import com.aipos.madogit.ui.components.StatusBadge
 import com.aipos.madogit.ui.components.SyncButton
 import com.aipos.madogit.ui.components.formatRelativeTime
 import com.aipos.madogit.ui.components.openExternalUrl
 import kotlinx.coroutines.launch
+import java.util.Calendar
 
 @Composable
 fun NotificationsScreen(
@@ -314,49 +317,102 @@ fun NotificationsScreen(
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-            // Notifications List / Empty State
-            if (notifications.isEmpty()) {
-                EmptyStateView(
-                    icon = Icons.Default.NotificationsNone,
-                    title = if (searchQuery.isNotEmpty() || unreadOnly) "No matching notifications" else "No notifications in this filter",
-                    description = if (searchQuery.isNotEmpty()) "Try adjusting your search query or clearing the active filters."
-                    else "Trigger a sync or monitor more repositories to receive alerts.",
-                    actionButtonLabel = if (searchQuery.isNotEmpty() || unreadOnly) "Clear Filters" else "Sync Now",
-                    onActionClick = {
-                        if (searchQuery.isNotEmpty() || unreadOnly) {
-                            viewModel.setNotificationSearchQuery("")
-                            viewModel.setUnreadOnlyFilter(false)
-                        } else {
-                            viewModel.triggerSync(context)
-                        }
+            val groupedNotifications = remember(notifications) {
+                notifications.groupBy { item ->
+                    val now = Calendar.getInstance()
+                    val itemCal = Calendar.getInstance().apply { timeInMillis = item.timestamp }
+                    val isSameDay = now.get(Calendar.YEAR) == itemCal.get(Calendar.YEAR) &&
+                            now.get(Calendar.DAY_OF_YEAR) == itemCal.get(Calendar.DAY_OF_YEAR)
+                    val diffDays = ((now.timeInMillis - item.timestamp) / (1000 * 60 * 60 * 24)).toInt()
+                    when {
+                        isSameDay -> "Today"
+                        diffDays <= 1 -> "Yesterday"
+                        diffDays < 7 -> "This Week"
+                        else -> "Earlier"
                     }
-                )
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    items(notifications, key = { it.id }) { item ->
-                        NotificationHistoryItem(
-                            notification = item,
-                            onOpen = {
-                                openExternalUrl(
-                                    context,
-                                    if (item.targetUrl.isNotBlank()) item.targetUrl
-                                    else "https://github.com/${item.repoFullName}"
+                }
+            }
+
+            // Notifications List / Empty State with Pull to Refresh
+            MadoPullToRefreshBox(
+                isRefreshing = syncStatus is com.aipos.madogit.data.repository.SyncStatus.Syncing,
+                onRefresh = { viewModel.triggerSync(context) },
+                modifier = Modifier.fillMaxSize()
+            ) {
+                if (notifications.isEmpty()) {
+                    EmptyStateView(
+                        icon = Icons.Default.NotificationsNone,
+                        title = if (searchQuery.isNotEmpty() || unreadOnly) "No matching notifications" else "No notifications in this filter",
+                        description = if (searchQuery.isNotEmpty()) "Try adjusting your search query or clearing the active filters."
+                        else "Pull down to sync or monitor more repositories to receive alerts.",
+                        actionButtonLabel = if (searchQuery.isNotEmpty() || unreadOnly) "Clear Filters" else "Sync Now",
+                        onActionClick = {
+                            if (searchQuery.isNotEmpty() || unreadOnly) {
+                                viewModel.setNotificationSearchQuery("")
+                                viewModel.setUnreadOnlyFilter(false)
+                            } else {
+                                viewModel.triggerSync(context)
+                            }
+                        }
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        groupedNotifications.forEach { (dateHeader, itemsInGroup) ->
+                            item(key = "header_$dateHeader") {
+                                Text(
+                                    text = dateHeader.uppercase(),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 4.dp, vertical = 4.dp)
+                                        .animateItem()
                                 )
-                            },
-                            onMarkRead = {
-                                viewModel.markNotificationRead(item.id)
-                            },
-                            onDelete = {
-                                viewModel.deleteNotification(item.id)
-                                coroutineScope.launch {
-                                    snackbarHostState.showSnackbar("Notification dismissed")
+                            }
+                            items(itemsInGroup, key = { it.id }) { item ->
+                                MadoSwipeToDismissItem(
+                                    onDismissToEnd = {
+                                        viewModel.markNotificationRead(item.id)
+                                        coroutineScope.launch {
+                                            snackbarHostState.showSnackbar("Marked as read")
+                                        }
+                                    },
+                                    onDismissToStart = {
+                                        viewModel.deleteNotification(item.id)
+                                        coroutineScope.launch {
+                                            snackbarHostState.showSnackbar("Notification dismissed")
+                                        }
+                                    },
+                                    modifier = Modifier.animateItem()
+                                ) {
+                                    NotificationHistoryItem(
+                                        notification = item,
+                                        onOpen = {
+                                            openExternalUrl(
+                                                context,
+                                                if (item.targetUrl.isNotBlank()) item.targetUrl
+                                                else "https://github.com/${item.repoFullName}"
+                                            )
+                                        },
+                                        onMarkRead = {
+                                            viewModel.markNotificationRead(item.id)
+                                        },
+                                        onDelete = {
+                                            viewModel.deleteNotification(item.id)
+                                            coroutineScope.launch {
+                                                snackbarHostState.showSnackbar("Notification dismissed")
+                                            }
+                                        }
+                                    )
                                 }
                             }
-                        )
+                        }
                     }
                 }
             }

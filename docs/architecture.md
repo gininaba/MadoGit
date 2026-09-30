@@ -80,16 +80,21 @@ graph TD
 
 ### 1. Presentation Layer (UI)
 
-The presentation layer is built entirely in **Jetpack Compose** using declarative UI components adhering to Google's Material 3 design system.
+The presentation layer is built entirely in **Jetpack Compose** using declarative UI components adhering to Google's Material 3 Expressive guidelines.
 
 - **MainViewModel**: Centralizes application state management. Exposes immutable `StateFlow` streams (`repositories`, `notifications`, `assistantSummary`, `syncStatus`, `rateLimitInfo`, `preferences`). All user actions trigger asynchronous coroutine jobs that execute within `viewModelScope`.
-- **Navigation**: Managed via `AppNavigation.kt` utilizing typed destinations (`NavDestination`). Features responsive bottom navigation on standard displays and adaptive rails for wide-screen or foldable form factors.
-- **Components**:
-  - `DashboardScreen`: Edge-to-edge profile card with integrated one-tap sync, rate-limit status, activity metrics, and chronological timeline.
-  - `AssistantScreen`: Priority triage displaying items needing direct action (pending reviews, assigned issues, failed CI runs).
-  - `RepositoriesScreen`: Searchable list of user and organization repositories with fine-grained monitoring toggles.
-  - `NotificationsScreen`: Searchable, filterable event archive with edge-to-edge search and category chips.
-  - `SettingsScreen`: Channel configuration, sync frequency selection, network constraints, theme customization, and diagnostics.
+- **Navigation & Transitions**: Managed via `AppNavigation.kt` utilizing typed destinations (`NavDestination`). Features fluid `AnimatedContent` slide-and-fade page transitions with spring physics, tactile haptic feedback on tab changes, and dynamic unread badges on navigation bar items.
+- **Common Gesture Components**:
+  - `MadoPullToRefreshBox`: Wraps official Compose Material 3 `PullToRefreshBox` with `PullToRefreshDefaults.Indicator` styled in dynamic primary tones across all primary feeds.
+  - `MadoSwipeToDismissItem`: Wraps M3 `SwipeToDismissBox` with directional haptic feedback, dual action colored surfaces (primary for read, error for dismiss), and snackbar undo confirmation.
+  - `RateLimitGauge`: Custom progress bar and countdown widget for real-time GitHub API rate-limit monitoring.
+  - `LanguageDot`: Colored circle indicator mapping official GitHub programming language colors.
+- **Screen Implementations**:
+  - `DashboardScreen`: Edge-to-edge profile card with integrated one-tap sync, embedded `RateLimitGauge`, metric cards, and animated chronological activity timeline (`Modifier.animateItem()`).
+  - `AssistantScreen`: Priority triage feed displaying items needing direct action (pending reviews, assigned issues, failed CI runs), segmented filter chips (*All*, *Reviews*, *Issues*, *CI Runs*), and celebratory "Inbox Zero" empty state.
+  - `RepositoriesScreen`: Searchable list of user and organization repositories with quick filter chips (*All*, *Monitored*, *Private*, *Public*), `LanguageDot` badges, monospace branch tags, and fine-grained monitoring toggles.
+  - `NotificationsScreen`: Searchable, filterable event archive with chronological date grouping (*Today*, *Yesterday*, *This Week*, *Earlier*), pull-to-refresh, and swipe-to-dismiss gesture handling.
+  - `SettingsScreen`: Channel configuration, sync frequency selection, network constraints, live Monet dynamic palette swatches preview, direct Android system notification channel settings shortcut, and diagnostics.
   - `AuthScreen`: Multi-mode authentication supporting Personal Access Tokens and OAuth flow.
   - `OnboardingScreen`: First-run guidance explaining permission requirements and notification benefits.
 
@@ -98,9 +103,9 @@ The presentation layer is built entirely in **Jetpack Compose** using declarativ
 The theming engine lives in `com.aipos.madogit.ui.theme`:
 
 - **Theme.kt**: Evaluates system capabilities (`Build.VERSION.SDK_INT >= Build.VERSION_CODES.S`) and user preference (`isDynamicColorEnabled`). Dynamically selects `dynamicDarkColorScheme` / `dynamicLightColorScheme` or falls back to custom dark/light palettes.
-- **Color.kt**: Semantic color tokens mapping GitHub brand aesthetics (dark slate background `#0D1117`, surface `#161B22`, border `#30363D`, accent green `#2EA44F`) to Material 3 roles (`primary`, `surfaceContainer`, `outlineVariant`, etc.).
-- **Shape.kt**: Corner rounding specifications adhering to Material 3 standard radii (`small = 8.dp`, `medium = 12.dp`, `large = 16.dp`, `extraLarge = 24.dp`).
-- **Type.kt**: Clear typographic hierarchy based on Google's Inter font scale.
+- **Color.kt**: Semantic color tokens mapping GitHub brand aesthetics (sapphire blue `#58A6FF`, emerald green `#3FB950`, amethyst purple `#BC8CFF`, crimson red `#F85149`, dark slate `#0D1117`, surface `#161B22`) to Material 3 roles (`primary`, full `surfaceContainerLowest` through `surfaceContainerHighest` elevation spectrum, `outlineVariant`, etc.). Includes `getLanguageColor()` mapping programming languages to their standard color codes.
+- **Shape.kt**: Corner rounding specifications adhering to Material 3 Expressive radii (Extra Small = `6.dp`, Small = `10.dp`, Medium = `16.dp`, Large = `22.dp`, Extra Large = `28.dp`).
+- **Type.kt**: Clear typographic hierarchy based on Google's Inter font scale, extended with monospace developer tokens (`Typography.code` and `Typography.codeSmall`) for commit hashes, branch tags, and syntax tokens.
 
 ### 3. Repository Layer
 

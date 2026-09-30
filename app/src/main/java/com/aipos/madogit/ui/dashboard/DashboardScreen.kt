@@ -63,7 +63,9 @@ import com.aipos.madogit.data.database.entities.GitHubNotificationEntity
 import com.aipos.madogit.data.repository.SyncStatus
 import com.aipos.madogit.ui.MainViewModel
 import com.aipos.madogit.ui.components.EmptyStateView
+import com.aipos.madogit.ui.components.MadoPullToRefreshBox
 import com.aipos.madogit.ui.components.OfflineBanner
+import com.aipos.madogit.ui.components.RateLimitGauge
 import com.aipos.madogit.ui.components.StatusBadge
 import com.aipos.madogit.ui.components.SyncButton
 import com.aipos.madogit.ui.components.formatRelativeTime
@@ -89,113 +91,119 @@ fun DashboardScreen(
 
     val isSyncing = syncStatus is SyncStatus.Syncing
 
-    Column(
+    MadoPullToRefreshBox(
+        isRefreshing = isSyncing,
+        onRefresh = { viewModel.triggerSync(context) },
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        OfflineBanner(
-            isOffline = isOffline,
-            onRetry = { viewModel.triggerSync(context) }
-        )
+        Column(modifier = Modifier.fillMaxSize()) {
+            OfflineBanner(
+                isOffline = isOffline,
+                onRetry = { viewModel.triggerSync(context) }
+            )
 
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // 1. Account Profile Card
-            item {
-                AccountCard(
-                    authState = authState,
-                    monitoredCount = monitoredCount,
-                    isSyncing = isSyncing,
-                    onSyncClick = { viewModel.triggerSync(context) },
-                    rateLimitInfo = rateLimitInfo,
-                    isOffline = isOffline,
-                    onManageReposClick = onNavigateToRepositories,
-                    onSignInClick = { viewModel.disconnect() }
-                )
-            }
-
-            // 2. Assistant Highlight Banner (if there are actionable items)
-            if (assistantSummary.totalActionableItems > 0) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // 1. Account Profile Card
                 item {
-                    AssistantBannerCard(
-                        summary = assistantSummary,
-                        onViewAssistantClick = onNavigateToAssistant
+                    AccountCard(
+                        authState = authState,
+                        monitoredCount = monitoredCount,
+                        isSyncing = isSyncing,
+                        onSyncClick = { viewModel.triggerSync(context) },
+                        rateLimitInfo = rateLimitInfo,
+                        isOffline = isOffline,
+                        onManageReposClick = onNavigateToRepositories,
+                        onSignInClick = { viewModel.disconnect() }
                     )
                 }
-            }
 
-            // 3. Activity Summary Metrics Grid
-            item {
-                ActivityMetricsGrid(
-                    unreadCount = unreadCount,
-                    pendingReviews = assistantSummary.pendingReviewRequests,
-                    assignedIssues = assistantSummary.assignedIssues,
-                    failedWorkflows = assistantSummary.failedWorkflows,
-                    onNavigateToNotifications = onNavigateToNotifications,
-                    onNavigateToAssistant = onNavigateToAssistant
-                )
-            }
+                // 2. Assistant Highlight Banner (if there are actionable items)
+                if (assistantSummary.totalActionableItems > 0) {
+                    item {
+                        AssistantBannerCard(
+                            summary = assistantSummary,
+                            onViewAssistantClick = onNavigateToAssistant
+                        )
+                    }
+                }
 
-            // 4. Recent GitHub Events & Alerts Timeline
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp, bottom = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Recent Activity Timeline",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.SemiBold
+                // 3. Activity Summary Metrics Grid
+                item {
+                    ActivityMetricsGrid(
+                        unreadCount = unreadCount,
+                        pendingReviews = assistantSummary.pendingReviewRequests,
+                        assignedIssues = assistantSummary.assignedIssues,
+                        failedWorkflows = assistantSummary.failedWorkflows,
+                        onNavigateToNotifications = onNavigateToNotifications,
+                        onNavigateToAssistant = onNavigateToAssistant
                     )
-                    Text(
-                        text = "View All",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
+                }
+
+                // 4. Recent GitHub Events & Alerts Timeline
+                item {
+                    Row(
                         modifier = Modifier
-                            .clickable { onNavigateToNotifications() }
-                            .padding(4.dp)
-                    )
+                            .fillMaxWidth()
+                            .padding(top = 8.dp, bottom = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Recent Activity Timeline",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "View All",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .clickable { onNavigateToNotifications() }
+                                .padding(4.dp)
+                        )
+                    }
                 }
-            }
 
-            if (allNotifications.isEmpty()) {
-                item {
-                    EmptyStateView(
-                        icon = Icons.Default.CheckCircle,
-                        title = "You're all caught up!",
-                        description = "No new events or notifications found on your monitored repositories.",
-                        actionButtonLabel = "Sync Now",
-                        onActionClick = { viewModel.triggerSync(context) }
-                    )
-                }
-            } else {
-                items(allNotifications.take(10), key = { it.id }) { notification ->
-                    TimelineEventCard(
-                        notification = notification,
-                        onCardClick = {
-                            openExternalUrl(
-                                context,
-                                if (notification.targetUrl.isNotBlank()) notification.targetUrl
-                                else "https://github.com/${notification.repoFullName}"
-                            )
-                        },
-                        onMarkReadClick = {
-                            viewModel.markNotificationRead(notification.id)
-                        }
-                    )
+                if (allNotifications.isEmpty()) {
+                    item {
+                        EmptyStateView(
+                            icon = Icons.Default.CheckCircle,
+                            title = "You're all caught up!",
+                            description = "No new events or notifications found on your monitored repositories.",
+                            actionButtonLabel = "Sync Now",
+                            onActionClick = { viewModel.triggerSync(context) }
+                        )
+                    }
+                } else {
+                    items(allNotifications.take(10), key = { it.id }) { notification ->
+                        TimelineEventCard(
+                            notification = notification,
+                            onCardClick = {
+                                openExternalUrl(
+                                    context,
+                                    if (notification.targetUrl.isNotBlank()) notification.targetUrl
+                                    else "https://github.com/${notification.repoFullName}"
+                                )
+                            },
+                            onMarkReadClick = {
+                                viewModel.markNotificationRead(notification.id)
+                            },
+                            modifier = Modifier.animateItem()
+                        )
+                    }
                 }
             }
         }
     }
 }
+
 
 @Composable
 private fun AccountCard(
@@ -216,174 +224,188 @@ private fun AccountCard(
             .fillMaxWidth()
             .testTag("account_card")
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(16.dp)
         ) {
-            when (authState) {
-                is AuthState.Authenticated -> {
-                    if (!authState.avatarUrl.isNullOrBlank()) {
-                        AsyncImage(
-                            model = authState.avatarUrl,
-                            contentDescription = "User Avatar",
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(CircleShape)
-                                .border(1.5.dp, MaterialTheme.colorScheme.primary, CircleShape),
-                            contentScale = ContentScale.Crop
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Default.AccountCircle,
-                            contentDescription = "User Profile",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(48.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(14.dp))
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = authState.displayName ?: authState.username,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = "@${authState.username}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Surface(
-                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                shape = MaterialTheme.shapes.small,
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                when (authState) {
+                    is AuthState.Authenticated -> {
+                        if (!authState.avatarUrl.isNullOrBlank()) {
+                            AsyncImage(
+                                model = authState.avatarUrl,
+                                contentDescription = "User Avatar",
                                 modifier = Modifier
-                                    .clip(MaterialTheme.shapes.small)
-                                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.small)
-                                    .clickable { onManageReposClick() }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(Icons.Default.Source, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(13.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = "$monitoredCount repos",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                            }
+                                    .size(50.dp)
+                                    .clip(CircleShape)
+                                    .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.AccountCircle,
+                                contentDescription = "User Profile",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(50.dp)
+                            )
+                        }
 
-                            Surface(
-                                color = if (isOffline) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
-                                shape = MaterialTheme.shapes.small,
-                                modifier = Modifier
-                                    .clip(MaterialTheme.shapes.small)
-                                    .border(
-                                        1.dp,
-                                        if (isOffline) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outlineVariant,
-                                        MaterialTheme.shapes.small
-                                    )
+                        Spacer(modifier = Modifier.width(14.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = authState.displayName ?: authState.username,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "@${authState.username}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                Surface(
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    shape = MaterialTheme.shapes.small,
+                                    modifier = Modifier
+                                        .clip(MaterialTheme.shapes.small)
+                                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.small)
+                                        .clickable { onManageReposClick() }
                                 ) {
-                                    if (isOffline) {
-                                        Icon(
-                                            imageVector = Icons.Default.CloudOff,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.error,
-                                            modifier = Modifier.size(13.dp)
-                                        )
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Default.Source, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(13.dp))
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text(
-                                            text = "Offline",
+                                            text = "$monitoredCount repos",
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onErrorContainer
+                                            color = MaterialTheme.colorScheme.onSurface
                                         )
-                                    } else {
-                                        Text(
-                                            text = "API: ${rateLimitInfo.first}/${rateLimitInfo.second}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+                                }
+
+                                Surface(
+                                    color = if (isOffline) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    shape = MaterialTheme.shapes.small,
+                                    modifier = Modifier
+                                        .clip(MaterialTheme.shapes.small)
+                                        .border(
+                                            1.dp,
+                                            if (isOffline) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outlineVariant,
+                                            MaterialTheme.shapes.small
                                         )
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        if (isOffline) {
+                                            Icon(
+                                                imageVector = Icons.Default.CloudOff,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.error,
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "Offline",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onErrorContainer
+                                            )
+                                        } else {
+                                            Text(
+                                                text = "Active",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.secondary,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        SyncButton(
-                            isSyncing = isSyncing,
-                            onSyncClick = onSyncClick
-                        )
-                        IconButton(
-                            onClick = onManageReposClick,
-                            modifier = Modifier.size(36.dp)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                                contentDescription = "Manage Repos",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp)
+                            SyncButton(
+                                isSyncing = isSyncing,
+                                onSyncClick = onSyncClick
                             )
+                            IconButton(
+                                onClick = onManageReposClick,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                    contentDescription = "Manage Repos",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
                     }
-                }
-                else -> {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Connect GitHub Account",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "Authenticate to monitor private and public repos",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        SyncButton(
-                            isSyncing = isSyncing,
-                            onSyncClick = onSyncClick
-                        )
-                        Button(
-                            onClick = onSignInClick,
-                            shape = MaterialTheme.shapes.small,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary
+                    else -> {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Connect GitHub Account",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
                             )
+                            Text(
+                                text = "Authenticate to monitor private and public repos",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text("Connect", fontSize = 12.sp)
+                            SyncButton(
+                                isSyncing = isSyncing,
+                                onSyncClick = onSyncClick
+                            )
+                            Button(
+                                onClick = onSignInClick,
+                                shape = MaterialTheme.shapes.small,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary
+                                )
+                            ) {
+                                Text("Connect", fontSize = 12.sp)
+                            }
                         }
                     }
                 }
             }
+
+            if (authState is AuthState.Authenticated && !isOffline && rateLimitInfo.second > 0) {
+                Spacer(modifier = Modifier.height(14.dp))
+                RateLimitGauge(
+                    remaining = rateLimitInfo.first,
+                    limit = rateLimitInfo.second
+                )
+            }
         }
+
     }
 }
 

@@ -108,3 +108,21 @@ val Typography = Typography(
         letterSpacing = 0.5.sp
     )
 )
+
+val androidx.compose.material3.Typography.code: TextStyle
+    get() = TextStyle(
+        fontFamily = FontFamily.Monospace,
+        fontWeight = FontWeight.Normal,
+        fontSize = 13.sp,
+        lineHeight = 18.sp,
+        letterSpacing = 0.sp
+    )
+
+val androidx.compose.material3.Typography.codeSmall: TextStyle
+    get() = TextStyle(
+        fontFamily = FontFamily.Monospace,
+        fontWeight = FontWeight.Medium,
+        fontSize = 11.sp,
+        lineHeight = 15.sp,
+        letterSpacing = 0.2.sp
+    )

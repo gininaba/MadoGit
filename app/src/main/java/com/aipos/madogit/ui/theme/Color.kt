@@ -6,31 +6,31 @@ import androidx.compose.ui.graphics.Color
 // Material You (Material 3) Tonal Palettes
 // ==========================================
 
-// Dark Theme Colors
-val md_theme_dark_primary = Color(0xFF7DD5FF)
-val md_theme_dark_onPrimary = Color(0xFF003548)
-val md_theme_dark_primaryContainer = Color(0xFF004D67)
-val md_theme_dark_onPrimaryContainer = Color(0xFFC4E8FF)
+// Dark Theme Colors (Fallback developer theme: Sapphire blue & Emerald accents)
+val md_theme_dark_primary = Color(0xFF58A6FF)
+val md_theme_dark_onPrimary = Color(0xFF002D6E)
+val md_theme_dark_primaryContainer = Color(0xFF1F6FEB)
+val md_theme_dark_onPrimaryContainer = Color(0xFFDDF4FF)
 
-val md_theme_dark_secondary = Color(0xFF53D89A)
-val md_theme_dark_onSecondary = Color(0xFF003822)
-val md_theme_dark_secondaryContainer = Color(0xFF005233)
-val md_theme_dark_onSecondaryContainer = Color(0xFF72F5B4)
+val md_theme_dark_secondary = Color(0xFF3FB950)
+val md_theme_dark_onSecondary = Color(0xFF003A12)
+val md_theme_dark_secondaryContainer = Color(0xFF238636)
+val md_theme_dark_onSecondaryContainer = Color(0xFFDAFBE1)
 
-val md_theme_dark_tertiary = Color(0xFFC7BFFF)
-val md_theme_dark_onTertiary = Color(0xFF2E2465)
-val md_theme_dark_tertiaryContainer = Color(0xFF453C7D)
-val md_theme_dark_onTertiaryContainer = Color(0xFFE4DFFF)
+val md_theme_dark_tertiary = Color(0xFFBC8CFF)
+val md_theme_dark_onTertiary = Color(0xFF3A1869)
+val md_theme_dark_tertiaryContainer = Color(0xFF442E69)
+val md_theme_dark_onTertiaryContainer = Color(0xFFF0E8FF)
 
-val md_theme_dark_error = Color(0xFFFFB4AB)
-val md_theme_dark_errorContainer = Color(0xFF93000A)
-val md_theme_dark_onError = Color(0xFF690005)
+val md_theme_dark_error = Color(0xFFF85149)
+val md_theme_dark_errorContainer = Color(0xFF6E161D)
+val md_theme_dark_onError = Color(0xFF490206)
 val md_theme_dark_onErrorContainer = Color(0xFFFFDAD6)
 
 val md_theme_dark_background = Color(0xFF0D1117)
-val md_theme_dark_onBackground = Color(0xFFE1E2E8)
+val md_theme_dark_onBackground = Color(0xFFF0F6FC)
 val md_theme_dark_surface = Color(0xFF161B22)
-val md_theme_dark_onSurface = Color(0xFFE1E2E8)
+val md_theme_dark_onSurface = Color(0xFFF0F6FC)
 val md_theme_dark_surfaceVariant = Color(0xFF21262D)
 val md_theme_dark_onSurfaceVariant = Color(0xFF8B949E)
 val md_theme_dark_outline = Color(0xFF30363D)
@@ -40,43 +40,86 @@ val md_theme_dark_surfaceContainerLowest = Color(0xFF090D12)
 val md_theme_dark_surfaceContainerLow = Color(0xFF10141B)
 val md_theme_dark_surfaceContainer = Color(0xFF161B22)
 val md_theme_dark_surfaceContainerHigh = Color(0xFF21262D)
-val md_theme_dark_surfaceContainerHighest = Color(0xFF2C323B)
+val md_theme_dark_surfaceContainerHighest = Color(0xFF30363D)
 
-// Light Theme Colors
-val md_theme_light_primary = Color(0xFF006688)
+// Light Theme Colors (Clean developer light palette)
+val md_theme_light_primary = Color(0xFF0969DA)
 val md_theme_light_onPrimary = Color(0xFFFFFFFF)
-val md_theme_light_primaryContainer = Color(0xFFC4E8FF)
-val md_theme_light_onPrimaryContainer = Color(0xFF001E2B)
+val md_theme_light_primaryContainer = Color(0xFFDDF4FF)
+val md_theme_light_onPrimaryContainer = Color(0xFF001D47)
 
-val md_theme_light_secondary = Color(0xFF006C45)
+val md_theme_light_secondary = Color(0xFF1A7F37)
 val md_theme_light_onSecondary = Color(0xFFFFFFFF)
-val md_theme_light_secondaryContainer = Color(0xFF72F5B4)
-val md_theme_light_onSecondaryContainer = Color(0xFF002113)
+val md_theme_light_secondaryContainer = Color(0xFFDAFBE1)
+val md_theme_light_onSecondaryContainer = Color(0xFF002209)
 
-val md_theme_light_tertiary = Color(0xFF5D5495)
+val md_theme_light_tertiary = Color(0xFF8250DF)
 val md_theme_light_onTertiary = Color(0xFFFFFFFF)
-val md_theme_light_tertiaryContainer = Color(0xFFE4DFFF)
-val md_theme_light_onTertiaryContainer = Color(0xFF190F4E)
+val md_theme_light_tertiaryContainer = Color(0xFFF0E8FF)
+val md_theme_light_onTertiaryContainer = Color(0xFF2E0966)
 
-val md_theme_light_error = Color(0xFFBA1A1A)
-val md_theme_light_errorContainer = Color(0xFFFFDAD6)
+val md_theme_light_error = Color(0xFFCF222E)
+val md_theme_light_errorContainer = Color(0xFFFFEBE9)
 val md_theme_light_onError = Color(0xFFFFFFFF)
-val md_theme_light_onErrorContainer = Color(0xFF410002)
+val md_theme_light_onErrorContainer = Color(0xFF4C000B)
 
 val md_theme_light_background = Color(0xFFF6F8FA)
-val md_theme_light_onBackground = Color(0xFF1B1B1F)
+val md_theme_light_onBackground = Color(0xFF1F2328)
 val md_theme_light_surface = Color(0xFFFFFFFF)
-val md_theme_light_onSurface = Color(0xFF1B1B1F)
-val md_theme_light_surfaceVariant = Color(0xFFEAEEF2)
-val md_theme_light_onSurfaceVariant = Color(0xFF57606A)
+val md_theme_light_onSurface = Color(0xFF1F2328)
+val md_theme_light_surfaceVariant = Color(0xFFEAEFF5)
+val md_theme_light_onSurfaceVariant = Color(0xFF656D76)
 val md_theme_light_outline = Color(0xFFD0D7DE)
 val md_theme_light_outlineVariant = Color(0xFFE1E4E8)
 
 val md_theme_light_surfaceContainerLowest = Color(0xFFFFFFFF)
 val md_theme_light_surfaceContainerLow = Color(0xFFF6F8FA)
-val md_theme_light_surfaceContainer = Color(0xFFEEF1F5)
-val md_theme_light_surfaceContainerHigh = Color(0xFFE6EAEF)
-val md_theme_light_surfaceContainerHighest = Color(0xFFDEE3E9)
+val md_theme_light_surfaceContainer = Color(0xFFEEF2F6)
+val md_theme_light_surfaceContainerHigh = Color(0xFFE5EBF1)
+val md_theme_light_surfaceContainerHighest = Color(0xFFD8E1E8)
+
+// ==========================================
+// Programming Language Palette (GitHub Standard)
+// ==========================================
+val LangKotlin = Color(0xFFA97BFF)
+val LangTypeScript = Color(0xFF3178C6)
+val LangJavaScript = Color(0xFFF1E05A)
+val LangPython = Color(0xFF3572A5)
+val LangRust = Color(0xFFDEA584)
+val LangGo = Color(0xFF00ADD8)
+val LangJava = Color(0xFFB07219)
+val LangSwift = Color(0xFFF05138)
+val LangCpp = Color(0xFFF34B7D)
+val LangRuby = Color(0xFF701516)
+val LangPhp = Color(0xFF4F5D95)
+val LangDart = Color(0xFF00B4AB)
+val LangCsharp = Color(0xFF178600)
+val LangHtml = Color(0xFFE34C26)
+val LangCss = Color(0xFF563D7C)
+val LangShell = Color(0xFF89E051)
+val LangDefault = Color(0xFF8B949E)
+
+fun getLanguageColor(language: String?): Color {
+    return when (language?.lowercase()?.trim()) {
+        "kotlin" -> LangKotlin
+        "typescript", "ts" -> LangTypeScript
+        "javascript", "js" -> LangJavaScript
+        "python", "py" -> LangPython
+        "rust", "rs" -> LangRust
+        "go", "golang" -> LangGo
+        "java" -> LangJava
+        "swift" -> LangSwift
+        "c++", "cpp" -> LangCpp
+        "ruby", "rb" -> LangRuby
+        "php" -> LangPhp
+        "dart" -> LangDart
+        "c#", "csharp" -> LangCsharp
+        "html" -> LangHtml
+        "css", "scss" -> LangCss
+        "shell", "bash", "zsh" -> LangShell
+        else -> LangDefault
+    }
+}
 
 // ==========================================
 // GitHub Developer Legacy Brand Palette (Fallback & Compatibility)

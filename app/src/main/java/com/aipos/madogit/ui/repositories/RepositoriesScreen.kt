@@ -54,7 +54,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aipos.madogit.data.database.entities.MonitoredRepoEntity
 import com.aipos.madogit.ui.MainViewModel
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import com.aipos.madogit.ui.components.EmptyStateView
+import com.aipos.madogit.ui.components.LanguageDot
+import com.aipos.madogit.ui.components.MadoPullToRefreshBox
 import com.aipos.madogit.ui.components.openExternalUrl
 
 @Composable
@@ -63,9 +73,22 @@ fun RepositoriesScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
     val repos by viewModel.filteredRepos.collectAsState()
     val searchQuery by viewModel.repoSearchQuery.collectAsState()
     val monitoredCount by viewModel.monitoredCount.collectAsState()
+    val syncStatus by viewModel.syncStatus.collectAsState()
+
+    var activeFilter by remember { mutableStateOf("ALL") }
+
+    val displayedRepos = remember(repos, activeFilter) {
+        when (activeFilter) {
+            "MONITORED" -> repos.filter { it.isMonitored }
+            "PRIVATE" -> repos.filter { it.isPrivate }
+            "PUBLIC" -> repos.filter { !it.isPrivate }
+            else -> repos
+        }
+    }
 
     Column(
         modifier = modifier
@@ -94,7 +117,10 @@ fun RepositoriesScreen(
             }
 
             IconButton(
-                onClick = { viewModel.refreshRepositories() },
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    viewModel.refreshRepositories()
+                },
                 modifier = Modifier.testTag("refresh_repos_button")
             ) {
                 Icon(
@@ -150,7 +176,45 @@ fun RepositoriesScreen(
                     .testTag("repo_search_input")
             )
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Quick Filters Row
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val filters = listOf(
+                    Pair("All (${repos.size})", "ALL"),
+                    Pair("Monitored ($monitoredCount)", "MONITORED"),
+                    Pair("Private (${repos.count { it.isPrivate }})", "PRIVATE"),
+                    Pair("Public (${repos.count { !it.isPrivate }})", "PUBLIC")
+                )
+
+                items(filters.size) { index ->
+                    val (title, key) = filters[index]
+                    val isSelected = activeFilter == key
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = { activeFilter = key },
+                        label = {
+                            Text(
+                                text = title,
+                                fontSize = 11.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                            )
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                            labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        ),
+                        shape = MaterialTheme.shapes.small
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -161,7 +225,10 @@ fun RepositoriesScreen(
                     color = MaterialTheme.colorScheme.primaryContainer,
                     shape = MaterialTheme.shapes.small,
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
-                    modifier = Modifier.clickable { viewModel.toggleAllReposMonitored(true) }
+                    modifier = Modifier.clickable {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        viewModel.toggleAllReposMonitored(true)
+                    }
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
@@ -187,7 +254,10 @@ fun RepositoriesScreen(
                     color = MaterialTheme.colorScheme.surfaceContainerHigh,
                     shape = MaterialTheme.shapes.small,
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    modifier = Modifier.clickable { viewModel.toggleAllReposMonitored(false) }
+                    modifier = Modifier.clickable {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        viewModel.toggleAllReposMonitored(false)
+                    }
                 ) {
                     Text(
                         text = "Unmonitor All",
@@ -226,45 +296,78 @@ fun RepositoriesScreen(
             }
         }
 
-        if (repos.isEmpty()) {
-            EmptyStateView(
-                icon = Icons.Default.Source,
-                title = if (searchQuery.isNotBlank()) "No repositories matched" else "No repositories found",
-                description = if (searchQuery.isNotBlank()) "Try a different search term" else "Connect your account to discover your GitHub repositories.",
-                actionButtonLabel = "Refresh Repos",
-                onActionClick = { viewModel.refreshRepositories() }
-            )
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                items(repos, key = { it.id }) { repo ->
-                    RepoItemCard(
-                        repo = repo,
-                        onToggle = { isMonitored ->
-                            viewModel.toggleRepoMonitored(repo.id, isMonitored)
-                        },
-                        onOpen = {
-                            openExternalUrl(
-                                context,
-                                if (repo.htmlUrl.isNotBlank()) repo.htmlUrl
-                                else "https://github.com/${repo.fullName}"
-                            )
-                        }
-                    )
+        MadoPullToRefreshBox(
+            isRefreshing = syncStatus is com.aipos.madogit.data.repository.SyncStatus.Syncing,
+            onRefresh = { viewModel.refreshRepositories() },
+            modifier = Modifier.fillMaxSize()
+        ) {
+            if (displayedRepos.isEmpty()) {
+                EmptyStateView(
+                    icon = Icons.Default.Source,
+                    title = if (searchQuery.isNotBlank() || activeFilter != "ALL") "No repositories matched" else "No repositories found",
+                    description = if (searchQuery.isNotBlank() || activeFilter != "ALL") "Try a different search term or filter" else "Connect your account to discover your GitHub repositories.",
+                    actionButtonLabel = "Refresh Repos",
+                    onActionClick = { viewModel.refreshRepositories() }
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(displayedRepos, key = { it.id }) { repo ->
+                        RepoItemCard(
+                            repo = repo,
+                            onToggle = { isMonitored ->
+                                viewModel.toggleRepoMonitored(repo.id, isMonitored)
+                            },
+                            onOpen = {
+                                openExternalUrl(
+                                    context,
+                                    if (repo.htmlUrl.isNotBlank()) repo.htmlUrl
+                                    else "https://github.com/${repo.fullName}"
+                                )
+                            },
+                            modifier = Modifier.animateItem()
+                        )
+                    }
                 }
             }
         }
     }
 }
 
+fun detectRepoLanguage(repo: MonitoredRepoEntity): String? {
+    val nameLower = repo.name.lowercase()
+    val descLower = (repo.description ?: "").lowercase()
+    return when {
+        nameLower.endsWith("-kt") || "kotlin" in descLower || "compose" in descLower || "android" in descLower -> "Kotlin"
+        nameLower.endsWith("-ts") || "typescript" in descLower -> "TypeScript"
+        nameLower.endsWith("-js") || "javascript" in descLower || "react" in descLower || "vue" in descLower || "node" in descLower -> "JavaScript"
+        "python" in descLower || nameLower.endsWith("-py") || "django" in descLower || "flask" in descLower -> "Python"
+        "rust" in descLower || nameLower.endsWith("-rs") -> "Rust"
+        "golang" in descLower || "go" in descLower -> "Go"
+        "swift" in descLower || "ios" in descLower -> "Swift"
+        "java" in descLower || "spring" in descLower -> "Java"
+        "dart" in descLower || "flutter" in descLower -> "Dart"
+        "ruby" in descLower || nameLower.endsWith("-rb") -> "Ruby"
+        "php" in descLower -> "PHP"
+        "c++" in descLower || "cpp" in descLower -> "C++"
+        "c#" in descLower || "csharp" in descLower -> "C#"
+        "html" in descLower -> "HTML"
+        "css" in descLower -> "CSS"
+        "shell" in descLower || "bash" in descLower -> "Shell"
+        else -> null
+    }
+}
+
+
 @Composable
 private fun RepoItemCard(
     repo: MonitoredRepoEntity,
     onToggle: (Boolean) -> Unit,
-    onOpen: () -> Unit
+    onOpen: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Card(
         colors = CardDefaults.cardColors(
@@ -277,7 +380,7 @@ private fun RepoItemCard(
             color = if (repo.isMonitored) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
             else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
         ),
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .testTag("repo_card_${repo.id}")
     ) {
@@ -325,8 +428,13 @@ private fun RepoItemCard(
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    val lang = detectRepoLanguage(repo)
+                    if (lang != null) {
+                        LanguageDot(language = lang)
+                    }
+
                     Surface(
                         color = MaterialTheme.colorScheme.surfaceContainerHighest,
                         shape = MaterialTheme.shapes.extraSmall
@@ -368,6 +476,7 @@ private fun RepoItemCard(
                             Text(
                                 text = repo.defaultBranch,
                                 style = MaterialTheme.typography.labelSmall,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -392,9 +501,13 @@ private fun RepoItemCard(
 
             Spacer(modifier = Modifier.width(10.dp))
 
+            val haptic = LocalHapticFeedback.current
             Switch(
                 checked = repo.isMonitored,
-                onCheckedChange = { onToggle(it) },
+                onCheckedChange = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    onToggle(it)
+                },
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
                     checkedTrackColor = MaterialTheme.colorScheme.primary,
