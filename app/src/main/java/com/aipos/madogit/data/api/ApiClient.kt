@@ -3,22 +3,52 @@ package com.aipos.madogit.data.api
 import com.aipos.madogit.data.auth.TokenManager
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import okhttp3.Cache
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Response
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
+import java.io.File
 import java.util.concurrent.TimeUnit
 
 object ApiClient {
     private const val GITHUB_BASE_URL = "https://api.github.com/"
+    private var httpCache: Cache? = null
 
-    fun createRetrofit(tokenManager: TokenManager): GitHubApiService {
-        val moshi = Moshi.Builder()
+    private val sharedMoshi: Moshi by lazy {
+        Moshi.Builder()
             .addLast(KotlinJsonAdapterFactory())
             .build()
+    }
 
+    private val baseHttpClient: OkHttpClient by lazy {
+        val loggingInterceptor = HttpLoggingInterceptor().apply {
+            level = if (com.aipos.madogit.BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY else HttpLoggingInterceptor.Level.NONE
+        }
+
+        val builder = OkHttpClient.Builder()
+            .connectTimeout(25, TimeUnit.SECONDS)
+            .readTimeout(25, TimeUnit.SECONDS)
+            .writeTimeout(25, TimeUnit.SECONDS)
+            .addInterceptor(loggingInterceptor)
+
+        httpCache?.let { builder.cache(it) }
+        builder.build()
+    }
+
+    fun initCache(cacheDir: File) {
+        if (httpCache == null) {
+            val cacheSize = 15L * 1024 * 1024 // 15 MB HTTP response cache for GitHub ETag / 304 support
+            httpCache = Cache(File(cacheDir, "http_github_cache"), cacheSize)
+        }
+    }
+
+    fun createRetrofit(
+        tokenManager: TokenManager,
+        onRateLimitUpdated: ((Int, Int) -> Unit)? = null
+    ): GitHubApiService {
         val authInterceptor = Interceptor { chain ->
             val originalRequest = chain.request()
             val requestBuilder = originalRequest.newBuilder()
@@ -31,35 +61,39 @@ object ApiClient {
                 requestBuilder.header("Authorization", "Bearer $token")
             }
 
-            val response: Response = chain.proceed(requestBuilder.build())
+            chain.proceed(requestBuilder.build())
+        }
+
+        val rateLimitInterceptor = Interceptor { chain ->
+            val response = chain.proceed(chain.request())
+            val limitStr = response.header("x-ratelimit-limit")
+            val remainingStr = response.header("x-ratelimit-remaining")
+            if (limitStr != null && remainingStr != null) {
+                try {
+                    val limit = limitStr.toInt()
+                    val remaining = remainingStr.toInt()
+                    onRateLimitUpdated?.invoke(remaining, limit)
+                } catch (_: Exception) {
+                    // ignore
+                }
+            }
             response
         }
 
-        val loggingInterceptor = HttpLoggingInterceptor().apply {
-            level = if (com.aipos.madogit.BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC else HttpLoggingInterceptor.Level.NONE
-        }
-
-        val okHttpClient = OkHttpClient.Builder()
-            .connectTimeout(25, TimeUnit.SECONDS)
-            .readTimeout(25, TimeUnit.SECONDS)
-            .writeTimeout(25, TimeUnit.SECONDS)
+        val okHttpClient = baseHttpClient.newBuilder()
             .addInterceptor(authInterceptor)
-            .addInterceptor(loggingInterceptor)
+            .addInterceptor(rateLimitInterceptor)
             .build()
 
         return Retrofit.Builder()
             .baseUrl(GITHUB_BASE_URL)
             .client(okHttpClient)
-            .addConverterFactory(MoshiConverterFactory.create(moshi))
+            .addConverterFactory(MoshiConverterFactory.create(sharedMoshi))
             .build()
             .create(GitHubApiService::class.java)
     }
 
     fun createRetrofitWithToken(token: String): GitHubApiService {
-        val moshi = Moshi.Builder()
-            .addLast(KotlinJsonAdapterFactory())
-            .build()
-
         val authInterceptor = Interceptor { chain ->
             val originalRequest = chain.request()
             val requestBuilder = originalRequest.newBuilder()
@@ -73,17 +107,14 @@ object ApiClient {
             chain.proceed(requestBuilder.build())
         }
 
-        val okHttpClient = OkHttpClient.Builder()
-            .connectTimeout(25, TimeUnit.SECONDS)
-            .readTimeout(25, TimeUnit.SECONDS)
-            .writeTimeout(25, TimeUnit.SECONDS)
+        val okHttpClient = baseHttpClient.newBuilder()
             .addInterceptor(authInterceptor)
             .build()
 
         return Retrofit.Builder()
             .baseUrl(GITHUB_BASE_URL)
             .client(okHttpClient)
-            .addConverterFactory(MoshiConverterFactory.create(moshi))
+            .addConverterFactory(MoshiConverterFactory.create(sharedMoshi))
             .build()
             .create(GitHubApiService::class.java)
     }

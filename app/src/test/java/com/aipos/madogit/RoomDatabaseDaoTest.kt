@@ -185,4 +185,27 @@ class RoomDatabaseDaoTest {
         assertEquals(2, recent.size)
         assertEquals("FAILED", recent[0].status)
     }
+
+    @Test
+    fun `repoDao preserves repository language field`() = runBlocking {
+        val repoDao = db.repoDao()
+        val repo = MonitoredRepoEntity(
+            id = 99L,
+            fullName = "owner/kotlin-repo",
+            name = "kotlin-repo",
+            owner = "owner",
+            isPrivate = false,
+            description = "A repo written in Kotlin",
+            stargazersCount = 42,
+            defaultBranch = "main",
+            htmlUrl = "https://github.com/owner/kotlin-repo",
+            isMonitored = true,
+            language = "Kotlin"
+        )
+        repoDao.insertIgnore(listOf(repo))
+
+        val retrieved = repoDao.getRepoById(99L)
+        assertNotNull(retrieved)
+        assertEquals("Kotlin", retrieved?.language)
+    }
 }

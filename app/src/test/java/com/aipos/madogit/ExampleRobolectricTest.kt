@@ -16,9 +16,26 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
+import com.aipos.madogit.data.auth.CryptoManager
+import org.junit.After
+import org.junit.Before
+import javax.crypto.KeyGenerator
+
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class ExampleRobolectricTest {
+
+    @Before
+    fun setUp() {
+        val keyGen = KeyGenerator.getInstance("AES")
+        keyGen.init(256)
+        CryptoManager.testSecretKey = keyGen.generateKey()
+    }
+
+    @After
+    fun tearDown() {
+        CryptoManager.testSecretKey = null
+    }
 
     @Test
     fun `read string from context`() {

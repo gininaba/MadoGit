@@ -160,9 +160,14 @@ object NotificationHelper {
         // Tap intent: opens the target GitHub URL in browser or app
         val targetUrl = if (notification.targetUrl.isNotBlank()) notification.targetUrl
                         else "https://github.com/${notification.repoFullName}"
-        val targetUri = targetUrl.toUri()
+        val parsedUri = targetUrl.toUri()
+        val safeUri = if (parsedUri.scheme?.lowercase() in listOf("https", "http")) {
+            parsedUri
+        } else {
+            "https://github.com/${notification.repoFullName}".toUri()
+        }
 
-        val viewIntent = Intent(Intent.ACTION_VIEW, targetUri).apply {
+        val viewIntent = Intent(Intent.ACTION_VIEW, safeUri).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         val contentPendingIntent = PendingIntent.getActivity(

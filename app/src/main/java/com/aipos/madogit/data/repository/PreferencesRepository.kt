@@ -123,11 +123,11 @@ class PreferencesRepository(context: Context) {
     }
 
     private fun loadThemeMode(): ThemeMode {
-        val name = prefs.getString("pref_theme_mode", ThemeMode.DARK.name)
+        val name = prefs.getString("pref_theme_mode", ThemeMode.LIGHT.name)
         return try {
-            ThemeMode.valueOf(name ?: ThemeMode.DARK.name)
+            ThemeMode.valueOf(name ?: ThemeMode.LIGHT.name)
         } catch (_: Exception) {
-            ThemeMode.DARK
+            ThemeMode.LIGHT
         }
     }
 

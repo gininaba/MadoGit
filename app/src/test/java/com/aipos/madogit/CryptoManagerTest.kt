@@ -64,11 +64,10 @@ class CryptoManagerTest {
         assertEquals(CryptoManager.decrypt(cipher1), CryptoManager.decrypt(cipher2))
     }
 
-    @Test
-    fun `encrypt falls back to plaintext if keystore is unavailable`() {
+    @Test(expected = IllegalStateException::class)
+    fun `encrypt throws IllegalStateException if keystore is unavailable without falling back to plaintext`() {
         CryptoManager.testSecretKey = null
         val token = "ghp_fallback_test"
-        val result = CryptoManager.encrypt(token)
-        assertEquals(token, result)
+        CryptoManager.encrypt(token)
     }
 }

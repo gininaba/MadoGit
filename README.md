@@ -309,6 +309,8 @@ madogit/
 │   │   │   └── res/
 │   │   │       ├── values/           # Strings, colors, styles
 │   │   │       └── xml/              # Backup & extraction rules
+│   │   ├── androidTest/
+│   │   │   └── java/com/aipos/madogit/ # Jetpack Compose UI instrumented tests
 │   │   └── test/
 │   │       └── java/com/aipos/madogit/ # Unit & Robolectric test suite
 ├── docs/
@@ -330,12 +332,16 @@ madogit/
 MadoGit maintains a comprehensive automated testing pipeline:
 
 - **Unit Tests**: Verify business logic, date formatting, filter rules, and preference schemas.
-- **Robolectric Tests**: Execute Android framework-dependent tests on the JVM without an emulator, testing Context resource extraction, notification channel bindings, and WorkManager configurations.
+- **Robolectric Tests**: Execute Android framework-dependent tests on the JVM without an emulator, testing Context resource extraction, Room migrations, and token encryption failure contracts.
+- **Connected Instrumented UI Tests**: Execute automated Jetpack Compose UI tests on physical devices or emulators, verifying onboarding flows, permission handling, and authentication tabs.
 - **Continuous Validation**: All pull requests must pass `./gradlew testDebugUnitTest` and compile without errors.
 
 ```bash
-# Execute the complete unit test verification suite
+# Execute local unit and Robolectric verification suite
 ./gradlew testDebugUnitTest
+
+# Execute connected Jetpack Compose UI instrumented test suite
+./gradlew connectedDebugAndroidTest
 ```
 
 ---

@@ -101,14 +101,14 @@ fun GitHubNotifierTheme(
         SideEffect {
             val window = (view.context as? Activity)?.window
             if (window != null) {
-                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-                    @Suppress("DEPRECATION")
-                    window.statusBarColor = Color.Transparent.toArgb()
-                    @Suppress("DEPRECATION")
-                    window.navigationBarColor = Color.Transparent.toArgb()
-                }
-                WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
-                WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = !darkTheme
+                WindowCompat.setDecorFitsSystemWindows(window, false)
+                @Suppress("DEPRECATION")
+                window.statusBarColor = Color.Transparent.toArgb()
+                @Suppress("DEPRECATION")
+                window.navigationBarColor = Color.Transparent.toArgb()
+                val insetsController = WindowCompat.getInsetsController(window, view)
+                insetsController.isAppearanceLightStatusBars = !darkTheme
+                insetsController.isAppearanceLightNavigationBars = !darkTheme
             }
         }
     }

@@ -35,6 +35,7 @@ data class GitHubRepoDto(
     @Json(name = "default_branch") val defaultBranch: String = "main",
     @Json(name = "html_url") val htmlUrl: String,
     @Json(name = "updated_at") val updatedAt: String?,
+    val language: String? = null,
     val owner: UserSummaryDto
 )
 

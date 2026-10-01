@@ -56,8 +56,8 @@ object CryptoManager {
             System.arraycopy(cipherText, 0, combined, iv.size, cipherText.size)
             "enc:" + Base64.encodeToString(combined, Base64.NO_WRAP)
         } catch (e: Exception) {
-            Log.w("CryptoManager", "Encryption unavailable or failed, falling back to raw storage", e)
-            plainText
+            Log.e("CryptoManager", "Encryption failed securely without plaintext fallback", e)
+            throw IllegalStateException("Failed to securely encrypt credentials in Keystore", e)
         }
     }
 

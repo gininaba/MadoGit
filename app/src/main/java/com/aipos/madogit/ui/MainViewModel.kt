@@ -4,7 +4,6 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.aipos.madogit.data.api.ApiClient
 import com.aipos.madogit.data.auth.AuthState
 import com.aipos.madogit.data.auth.TokenManager
 import com.aipos.madogit.data.database.entities.GitHubNotificationEntity
@@ -156,35 +155,11 @@ class MainViewModel(
                 return@launch
             }
 
-            tokenManager.setAuthLoading()
-            try {
-                val clientId = tokenManager.getOAuthClientId()
-                val clientSecret = tokenManager.getOAuthClientSecret()
-                val redirectUri = tokenManager.getRedirectUri()
-
-                val api = ApiClient.createRetrofit(tokenManager)
-                val response = api.exchangeOAuthToken(
-                    clientId = clientId,
-                    clientSecret = clientSecret,
-                    code = code,
-                    redirectUri = redirectUri
-                )
-
-                if (!response.accessToken.isNullOrBlank()) {
-                    val connectResult = repository.connectWithToken(response.accessToken)
-                    if (connectResult.isSuccess) {
-                        onComplete(true, null)
-                    } else {
-                        onComplete(false, connectResult.exceptionOrNull()?.message)
-                    }
-                } else {
-                    val errorMsg = response.errorDescription ?: response.error ?: "OAuth token exchange failed"
-                    tokenManager.setAuthError(errorMsg)
-                    onComplete(false, errorMsg)
-                }
-            } catch (e: Exception) {
-                tokenManager.setAuthError(e.message ?: "OAuth Error")
-                onComplete(false, e.message)
+            val result = repository.exchangeOAuthToken(code)
+            if (result.isSuccess) {
+                onComplete(true, null)
+            } else {
+                onComplete(false, result.exceptionOrNull()?.message)
             }
         }
     }

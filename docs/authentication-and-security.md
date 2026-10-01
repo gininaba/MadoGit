@@ -14,10 +14,15 @@ MadoGit adheres to a strict sovereign-privacy model: **zero intermediate servers
 - The application collects no telemetry, identifiers, or behavioral analytics.
 
 ### Local Credential Storage
-Credentials (Personal Access Tokens and OAuth Access Tokens) are persisted using `EncryptedSharedPreferences` backed by the hardware-backed **Android Keystore System**:
-- Encryption standard: AES-256 GCM for preference values.
-- Key protection: Keystore master keys are generated with 256-bit AES encryption (`MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM)`).
-- Memory lifecycle: Tokens reside in memory only during active execution scopes and are zeroed upon sign-out.
+Credentials (Personal Access Tokens and OAuth Access Tokens) are persisted using hardware-backed **Android Keystore System** AES-256 GCM encryption:
+- Encryption standard: AES-256 GCM (`AES/GCM/NoPadding`) for secret values.
+- Fail-closed contract: `CryptoManager.encrypt()` throws `IllegalStateException` if Keystore encryption fails, completely preventing unencrypted plaintext fallback.
+- Key protection: Keystore master keys are generated with 256-bit AES encryption.
+- Memory lifecycle: Tokens reside in memory only during active execution scopes and are cleared upon sign-out.
+
+### Intent & Deep Link Sanitization
+- Outbound intent launches and notification tap `PendingIntent` targets strictly sanitize URIs, accepting only valid `https://` and `http://` schemes.
+- OAuth deep links (`ghnotifier://oauth/callback`) require cryptographic state verification (`state` token) to guard against cross-site request forgery (CSRF).
 
 ---
 

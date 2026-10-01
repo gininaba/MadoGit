@@ -52,6 +52,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -110,15 +111,29 @@ fun StatusBadge(
         else -> null
     }
 
-    val badgeText = when {
+    val cleanText = when {
         text.startsWith("WORKFLOW ", ignoreCase = true) -> text.substringAfter(" ").trim()
         text.startsWith("PR ", ignoreCase = true) -> text.substringAfter(" ").trim()
         text.startsWith("ISSUE ", ignoreCase = true) -> text.substringAfter(" ").trim()
         else -> text
     }.ifEmpty { text }
 
+    val badgeText = when (cleanText.uppercase()) {
+        "WORKFLOW_FAILED", "FAILED", "FAILURE" -> "Build Failed"
+        "WORKFLOW_SUCCESS", "SUCCESS", "PASSED" -> "Build Passed"
+        "REVIEW_REQUESTED" -> "Review Needed"
+        "ASSIGNED" -> "Assigned"
+        "PR_OPENED" -> "PR Opened"
+        "ISSUE_OPENED" -> "Issue Opened"
+        "RELEASE_PUBLISHED", "PUBLISHED" -> "Released"
+        "TIMED_OUT" -> "Timed Out"
+        "MERGED" -> "Merged"
+        else -> cleanText.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }
+    }
+
     Row(
         modifier = modifier
+            .semantics(mergeDescendants = true) { }
             .clip(MaterialTheme.shapes.small)
             .background(bgColor)
             .border(1.dp, textColor.copy(alpha = 0.25f), MaterialTheme.shapes.small)
@@ -321,7 +336,13 @@ fun SyncButton(
 fun openExternalUrl(context: Context, url: String?) {
     try {
         val target = if (!url.isNullOrBlank()) url.trim() else "https://github.com"
-        val intent = Intent(Intent.ACTION_VIEW, target.toUri()).apply {
+        val uri = target.toUri()
+        val scheme = uri.scheme?.lowercase()
+        if (scheme != "https" && scheme != "http") {
+            Toast.makeText(context, "Invalid web address: only secure web links are supported", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val intent = Intent(Intent.ACTION_VIEW, uri).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
         context.startActivity(intent)

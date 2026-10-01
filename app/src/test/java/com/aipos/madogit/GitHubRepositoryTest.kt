@@ -221,6 +221,74 @@ class GitHubRepositoryTest {
         repository.clearCache()
         assertEquals(0, notifDao.getTotalNotificationCount())
     }
+
+    @Test
+    fun `markNotificationAsRead updates notification state to read`() = runBlocking {
+        val notifDao = db.notificationDao()
+        notifDao.insert(
+            GitHubNotificationEntity(
+                id = "gh_thread_123",
+                eventType = "TEST",
+                category = "PR",
+                repoFullName = "owner/repo",
+                title = "Test PR",
+                body = "",
+                author = "dev",
+                avatarUrl = null,
+                targetUrl = "https://github.com/owner/repo/pull/123",
+                timestamp = 1000L,
+                isRead = false
+            )
+        )
+
+        assertEquals(false, notifDao.getNotificationById("gh_thread_123")?.isRead)
+        repository.markNotificationAsRead("gh_thread_123")
+        assertEquals(true, notifDao.getNotificationById("gh_thread_123")?.isRead)
+    }
+
+    @Test
+    fun `markAllNotificationsAsRead marks all notifications as read`() = runBlocking {
+        val notifDao = db.notificationDao()
+        notifDao.insert(
+            GitHubNotificationEntity(
+                id = "gh_thread_1",
+                eventType = "TEST",
+                category = "PR",
+                repoFullName = "owner/repo",
+                title = "Test 1",
+                body = "",
+                author = "dev",
+                avatarUrl = null,
+                targetUrl = "",
+                timestamp = 1000L,
+                isRead = false
+            )
+        )
+        notifDao.insert(
+            GitHubNotificationEntity(
+                id = "gh_thread_2",
+                eventType = "TEST",
+                category = "ISSUE",
+                repoFullName = "owner/repo",
+                title = "Test 2",
+                body = "",
+                author = "dev",
+                avatarUrl = null,
+                targetUrl = "",
+                timestamp = 2000L,
+                isRead = false
+            )
+        )
+
+        assertEquals(2, notifDao.getUnreadNotifications().size)
+        repository.markAllNotificationsAsRead()
+        assertEquals(0, notifDao.getUnreadNotifications().size)
+    }
+
+    @Test
+    fun `default theme mode is LIGHT on fresh preferences`() {
+        assertEquals(com.aipos.madogit.data.repository.ThemeMode.LIGHT, prefsRepo.themeMode.value)
+    }
 }
 
 

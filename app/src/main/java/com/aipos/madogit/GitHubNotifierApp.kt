@@ -32,6 +32,7 @@ class GitHubNotifierApp : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
 
+        com.aipos.madogit.data.api.ApiClient.initCache(cacheDir)
         database = AppDatabase.getInstance(this)
         tokenManager = TokenManager(this)
         preferencesRepository = PreferencesRepository(this)

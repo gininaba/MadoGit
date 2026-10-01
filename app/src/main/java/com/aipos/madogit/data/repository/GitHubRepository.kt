@@ -54,7 +54,9 @@ class GitHubRepository(
     private val processedEventDao = database.processedEventDao()
     private val syncLogDao = database.syncLogDao()
 
-    private var apiService: GitHubApiService = ApiClient.createRetrofit(tokenManager)
+    private var apiService: GitHubApiService = ApiClient.createRetrofit(tokenManager) { remaining, limit ->
+        preferencesRepository.updateRateLimit(remaining, limit)
+    }
 
     private val _syncStatus = MutableStateFlow<SyncStatus>(SyncStatus.Idle)
     val syncStatus: StateFlow<SyncStatus> = _syncStatus.asStateFlow()
@@ -85,7 +87,9 @@ class GitHubRepository(
             val user = verifyService.getCurrentUser()
 
             tokenManager.saveAuthSuccess(token, user)
-            apiService = ApiClient.createRetrofit(tokenManager)
+            apiService = ApiClient.createRetrofit(tokenManager) { remaining, limit ->
+                preferencesRepository.updateRateLimit(remaining, limit)
+            }
             _isOffline.value = false
 
             // Fetch initial repositories
@@ -107,6 +111,34 @@ class GitHubRepository(
         }
     }
 
+    suspend fun exchangeOAuthToken(code: String): Result<GitHubUserDto> = withContext(Dispatchers.IO) {
+        tokenManager.setAuthLoading()
+        try {
+            val clientId = tokenManager.getOAuthClientId()
+            val clientSecret = tokenManager.getOAuthClientSecret()
+            val redirectUri = tokenManager.getRedirectUri()
+
+            val response = apiService.exchangeOAuthToken(
+                clientId = clientId,
+                clientSecret = clientSecret,
+                code = code,
+                redirectUri = redirectUri
+            )
+
+            if (!response.accessToken.isNullOrBlank()) {
+                connectWithToken(response.accessToken)
+            } else {
+                val errorMsg = response.errorDescription ?: response.error ?: "OAuth token exchange failed"
+                tokenManager.setAuthError(errorMsg)
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            val message = e.message ?: "OAuth token exchange failed"
+            tokenManager.setAuthError(message)
+            Result.failure(Exception(message))
+        }
+    }
+
     suspend fun disconnect() = withContext(Dispatchers.IO) {
         tokenManager.clearAuth()
     }
@@ -119,25 +151,37 @@ class GitHubRepository(
         repoDao.setAllMonitored(isMonitored)
     }
 
+    private fun convertApiUrlToHtmlUrl(apiUrl: String?): String? {
+        if (apiUrl == null) return null
+        return apiUrl.replace("api.github.com/repos/", "github.com/")
+            .replace("/pulls/", "/pull/")
+    }
+
     suspend fun markNotificationAsRead(id: String) = withContext(Dispatchers.IO) {
         notificationDao.markAsRead(id)
         try {
             // If it's a GitHub notification thread, inform GitHub API
             if (id.startsWith("gh_thread_")) {
                 val threadId = id.removePrefix("gh_thread_")
-                apiService.markNotificationAsRead(threadId)
+                val response = apiService.markNotificationAsRead(threadId)
+                if (!response.isSuccessful) {
+                    Log.w("GitHubRepository", "Failed to mark thread $threadId as read on GitHub: ${response.code()} ${response.message()}")
+                }
             }
-        } catch (_: Exception) {
-            // Non-critical background failure
+        } catch (e: Exception) {
+            Log.w("GitHubRepository", "Exception marking notification as read on GitHub", e)
         }
     }
 
     suspend fun markAllNotificationsAsRead() = withContext(Dispatchers.IO) {
         notificationDao.markAllAsRead()
         try {
-            apiService.markAllNotificationsAsRead()
-        } catch (_: Exception) {
-            // Non-critical background failure (e.g. offline or token scope restriction)
+            val response = apiService.markAllNotificationsAsRead()
+            if (!response.isSuccessful) {
+                Log.w("GitHubRepository", "Failed to mark all notifications as read on GitHub: ${response.code()} ${response.message()}")
+            }
+        } catch (e: Exception) {
+            Log.w("GitHubRepository", "Exception marking all notifications as read on GitHub", e)
         }
     }
 
@@ -159,6 +203,7 @@ class GitHubRepository(
 
             val repoEntities = remoteRepos.map { dto ->
                 val wasMonitored = currentMonitored[dto.id]?.isMonitored ?: monitorAll
+                val existingLastSynced = currentMonitored[dto.id]?.lastSyncedAt ?: 0L
                 MonitoredRepoEntity(
                     id = dto.id,
                     fullName = dto.fullName,
@@ -171,7 +216,8 @@ class GitHubRepository(
                     defaultBranch = dto.defaultBranch,
                     htmlUrl = dto.htmlUrl,
                     isMonitored = wasMonitored,
-                    lastSyncedAt = System.currentTimeMillis()
+                    lastSyncedAt = existingLastSynced,
+                    language = dto.language
                 )
             }
 
@@ -328,7 +374,7 @@ class GitHubRepository(
                             body = "Reason: ${item.reason.replace('_', ' ')} (${item.subject.type})",
                             author = item.repository.owner.login,
                             avatarUrl = item.repository.owner.avatarUrl,
-                            targetUrl = item.repository.htmlUrl ?: "https://github.com/${item.repository.fullName}",
+                            targetUrl = convertApiUrlToHtmlUrl(item.subject.url) ?: item.repository.htmlUrl ?: "https://github.com/${item.repository.fullName}",
                             timestamp = parseIsoDate(item.updatedAt),
                             isRead = isRead,
                             isNotified = true,
@@ -452,8 +498,8 @@ class GitHubRepository(
                                 val prEventType = if (isReviewRequested) "REVIEW_REQUESTED" else "PR_OPENED"
                                 val prActionState = if (isReviewRequested) "REVIEW_REQUESTED" else "OPEN"
 
-                                // On first sync of a repo, mark as read unless review is explicitly requested from current user
-                                val isRead = if (isFirstSyncForRepo) !isReviewRequested else false
+                                // On first sync of a repo, past existing PRs are marked as read
+                                val isRead = isFirstSyncForRepo
 
                                 val notif = GitHubNotificationEntity(
                                     id = prEventId,
@@ -479,7 +525,9 @@ class GitHubRepository(
                                 }
                             }
                         }
-                    } catch (_: Exception) {}
+                    } catch (e: Exception) {
+                        Log.d("GitHubRepository", "Pull requests not available or permission denied for $owner/$repoName: ${e.message}")
+                    }
                 }
 
                 // Fetch issues
@@ -514,8 +562,8 @@ class GitHubRepository(
                                 val issueEventType = if (isAssigned) "ASSIGNED" else "ISSUE_OPENED"
                                 val issueActionState = if (isAssigned) "ASSIGNED" else "OPEN"
 
-                                // On first sync of a repo, mark as read unless assigned to current user
-                                val isRead = if (isFirstSyncForRepo) !isAssigned else false
+                                // On first sync of a repo, past existing issues are marked as read
+                                val isRead = isFirstSyncForRepo
 
                                 val notif = GitHubNotificationEntity(
                                     id = issueEventId,
@@ -541,7 +589,9 @@ class GitHubRepository(
                                 }
                             }
                         }
-                    } catch (_: Exception) {}
+                    } catch (e: Exception) {
+                        Log.d("GitHubRepository", "Issues not available or permission denied for $owner/$repoName: ${e.message}")
+                    }
                 }
 
                 // Fetch releases
@@ -591,7 +641,9 @@ class GitHubRepository(
                                 }
                             }
                         }
-                    } catch (_: Exception) {}
+                    } catch (e: Exception) {
+                        Log.d("GitHubRepository", "Releases not available or permission denied for $owner/$repoName: ${e.message}")
+                    }
                 }
 
                 // Update repository last synced timestamp

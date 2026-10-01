@@ -41,7 +41,8 @@ interface GitHubApiService {
 
     @PATCH("notifications/threads/{thread_id}")
     suspend fun markNotificationAsRead(
-        @Path("thread_id") threadId: String
+        @Path("thread_id") threadId: String,
+        @Body body: Map<String, String> = emptyMap()
     ): Response<Unit>
 
     @PUT("notifications")

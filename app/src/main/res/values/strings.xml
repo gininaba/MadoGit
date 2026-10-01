@@ -3,4 +3,37 @@
     <string name="app_full_name">MadoGit</string>
     <string name="app_tagline">A minimal window into your GitHub activity</string>
     <string name="app_meaning">(Mado = window) — A minimal window into your GitHub activity</string>
+
+    <!-- Navigation Titles -->
+    <string name="nav_dashboard">Dashboard</string>
+    <string name="nav_notifications">Inbox</string>
+    <string name="nav_repositories">Repos</string>
+    <string name="nav_assistant">Assistant</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Common Actions -->
+    <string name="action_cancel">Cancel</string>
+    <string name="action_clear_all">Clear All</string>
+    <string name="action_sync_now">Sync Now</string>
+    <string name="action_refresh">Refresh</string>
+    <string name="action_disconnect">Disconnect</string>
+    <string name="action_connect">Connect to GitHub</string>
+
+    <!-- Dialogs -->
+    <string name="dialog_clear_all_title">Clear All Notifications?</string>
+    <string name="dialog_clear_all_message">This will permanently remove all cached notifications stored on this device. You can sync new events anytime.</string>
+
+    <!-- Screen Headers -->
+    <string name="header_inbox">Notification Inbox</string>
+    <string name="header_repos">Monitored Repositories</string>
+    <string name="header_assistant">GitHub Assistant</string>
+    <string name="header_settings">Settings</string>
+
+    <!-- Settings Sections -->
+    <string name="settings_section_account">GitHub Account</string>
+    <string name="settings_section_appearance">Appearance &amp; Material You</string>
+    <string name="settings_section_notifications">Notification Preferences</string>
+    <string name="settings_section_sync">Background Monitoring</string>
+    <string name="settings_section_diagnostics">Diagnostics &amp; API Quota</string>
+    <string name="settings_section_about">About</string>
 </resources>

@@ -5,6 +5,12 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -19,7 +25,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -41,8 +50,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.shape.RoundedCornerShape
+import com.aipos.madogit.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -67,41 +85,68 @@ fun OnboardingScreen(
         currentStep = 1
     }
 
-    AnimatedContent(
-        targetState = currentStep,
-        label = "onboarding_steps",
-        modifier = modifier.safeDrawingPadding()
-    ) { step ->
-        when (step) {
-            0 -> {
-                // Step 0: Welcome & Features introduction
-                WelcomeStep(
-                    onNext = {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                        } else {
-                            currentStep = 1
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        AnimatedContent(
+            targetState = currentStep,
+            label = "onboarding_steps",
+            modifier = Modifier.fillMaxSize(),
+            transitionSpec = {
+                if (targetState > initialState) {
+                    (slideInHorizontally(
+                        initialOffsetX = { fullWidth -> fullWidth },
+                        animationSpec = tween(350)
+                    ) + fadeIn(animationSpec = tween(350))) togetherWith
+                    (slideOutHorizontally(
+                        targetOffsetX = { fullWidth -> -fullWidth / 4 },
+                        animationSpec = tween(350)
+                    ) + fadeOut(animationSpec = tween(250)))
+                } else {
+                    (slideInHorizontally(
+                        initialOffsetX = { fullWidth -> -fullWidth },
+                        animationSpec = tween(350)
+                    ) + fadeIn(animationSpec = tween(350))) togetherWith
+                    (slideOutHorizontally(
+                        targetOffsetX = { fullWidth -> fullWidth / 4 },
+                        animationSpec = tween(350)
+                    ) + fadeOut(animationSpec = tween(250)))
+                }
+            }
+        ) { step ->
+            when (step) {
+                0 -> {
+                    // Step 0: Welcome & Features introduction
+                    WelcomeStep(
+                        onNext = {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            } else {
+                                currentStep = 1
+                            }
                         }
-                    }
-                )
-            }
-            1 -> {
-                // Step 1: Connect GitHub account
-                AuthScreen(
-                    viewModel = viewModel,
-                    onAuthSuccess = {
-                        currentStep = 2
-                    }
-                )
-            }
-            2 -> {
-                // Step 2: Setup Completed celebration & Next Steps
-                SetupCompletedStep(
-                    onFinish = {
-                        viewModel.completeFirstLaunch()
-                        onComplete()
-                    }
-                )
+                    )
+                }
+                1 -> {
+                    // Step 1: Connect GitHub account
+                    AuthScreen(
+                        viewModel = viewModel,
+                        onAuthSuccess = {
+                            currentStep = 2
+                        }
+                    )
+                }
+                2 -> {
+                    // Step 2: Setup Completed celebration & Next Steps
+                    SetupCompletedStep(
+                        onFinish = {
+                            viewModel.completeFirstLaunch()
+                            onComplete()
+                        }
+                    )
+                }
             }
         }
     }
@@ -109,90 +154,90 @@ fun OnboardingScreen(
 
 @Composable
 private fun WelcomeStep(onNext: () -> Unit) {
+    val haptic = LocalHapticFeedback.current
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val scrollState = rememberScrollState()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .padding(24.dp),
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(horizontal = 24.dp, vertical = 20.dp)
+            .verticalScroll(scrollState),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Box(
+        // Official Brand Logo
+        Image(
+            painter = painterResource(id = if (isDark) R.drawable.ic_madogit_logo_dark else R.drawable.ic_madogit_logo_light),
+            contentDescription = "MadoGit Logo",
             modifier = Modifier
-                .size(76.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primaryContainer)
-                .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Default.NotificationsActive,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier.size(40.dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Text(
-            text = "MadoGit",
-            style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center
+                .width(220.dp)
+                .height(52.dp),
+            contentScale = ContentScale.Fit
         )
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
         Text(
-            text = "A minimal window into your GitHub activity. Never miss important pull requests, assigned issues, or failing GitHub Actions workflows.",
-            style = MaterialTheme.typography.bodyMedium,
+            text = "A minimal window into your GitHub activity.\nNever miss important pull requests, assigned issues, or failing CI workflows.",
+            style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(horizontal = 16.dp)
         )
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(28.dp))
 
         FeatureHighlightRow(
             icon = Icons.Default.NotificationsActive,
+            iconContainerColor = MaterialTheme.colorScheme.primaryContainer,
+            iconContentColor = MaterialTheme.colorScheme.primary,
             title = "Real Android Push Notifications",
-            description = "Get notified when someone requests your review or merges code."
+            description = "Get notified instantly when someone requests your review or merges code."
         )
 
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
         FeatureHighlightRow(
             icon = Icons.Default.AutoAwesome,
+            iconContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
+            iconContentColor = MaterialTheme.colorScheme.tertiary,
             title = "Intelligent Event Deduplication",
-            description = "No spam. Processed events are uniquely fingerprinted and grouped."
+            description = "Zero spam. Processed events are uniquely fingerprinted and grouped."
         )
 
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
         FeatureHighlightRow(
             icon = Icons.Default.Security,
+            iconContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+            iconContentColor = MaterialTheme.colorScheme.secondary,
             title = "100% Private & On-Device",
             description = "Direct connection to official GitHub API. No intermediate servers."
         )
 
-        Spacer(modifier = Modifier.height(36.dp))
+        Spacer(modifier = Modifier.height(32.dp))
 
         Button(
-            onClick = onNext,
+            onClick = {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                onNext()
+            },
             colors = ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary
             ),
-            shape = MaterialTheme.shapes.medium,
+            shape = RoundedCornerShape(16.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .height(48.dp)
+                .height(52.dp)
                 .testTag("onboarding_get_started_button")
         ) {
-            Text("Get Started", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-            Spacer(modifier = Modifier.width(6.dp))
+            Text("Get Started", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Spacer(modifier = Modifier.width(8.dp))
             Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
         }
     }
@@ -201,42 +246,46 @@ private fun WelcomeStep(onNext: () -> Unit) {
 @Composable
 private fun FeatureHighlightRow(
     icon: ImageVector,
+    iconContainerColor: Color,
+    iconContentColor: Color,
     title: String,
     description: String
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceContainer, MaterialTheme.shapes.medium)
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.medium)
-            .padding(14.dp),
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
+            .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                .size(44.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(iconContainerColor),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(18.dp)
+                tint = iconContentColor,
+                modifier = Modifier.size(22.dp)
             )
         }
-        Spacer(modifier = Modifier.width(12.dp))
-        Column {
+        Spacer(modifier = Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.SemiBold
             )
+            Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = description,
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodySmall.copy(lineHeight = 18.sp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
@@ -245,11 +294,16 @@ private fun FeatureHighlightRow(
 
 @Composable
 private fun SetupCompletedStep(onFinish: () -> Unit) {
+    val scrollState = rememberScrollState()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .padding(24.dp),
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(24.dp)
+            .verticalScroll(scrollState),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {

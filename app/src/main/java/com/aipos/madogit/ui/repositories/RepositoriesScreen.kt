@@ -62,6 +62,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import com.aipos.madogit.ui.components.EmptyStateView
 import com.aipos.madogit.ui.components.LanguageDot
 import com.aipos.madogit.ui.components.MadoPullToRefreshBox
@@ -430,7 +432,7 @@ private fun RepoItemCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    val lang = detectRepoLanguage(repo)
+                    val lang = repo.language?.ifBlank { null } ?: detectRepoLanguage(repo)
                     if (lang != null) {
                         LanguageDot(language = lang)
                     }
@@ -514,7 +516,11 @@ private fun RepoItemCard(
                     uncheckedThumbColor = MaterialTheme.colorScheme.outline,
                     uncheckedTrackColor = MaterialTheme.colorScheme.surfaceContainerHighest
                 ),
-                modifier = Modifier.testTag("repo_switch_${repo.id}")
+                modifier = Modifier
+                    .testTag("repo_switch_${repo.id}")
+                    .semantics {
+                        contentDescription = if (repo.isMonitored) "Stop monitoring ${repo.fullName}" else "Monitor ${repo.fullName}"
+                    }
             )
         }
     }

@@ -36,14 +36,18 @@ import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -51,13 +55,18 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -80,12 +89,14 @@ import com.aipos.madogit.ui.components.openExternalUrl
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun NotificationsScreen(
     viewModel: MainViewModel,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
     val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -97,6 +108,57 @@ fun NotificationsScreen(
     val unreadOnly by viewModel.unreadOnlyFilter.collectAsState()
 
     val categories = listOf("ALL", "PR", "ISSUE", "WORKFLOW", "RELEASE", "ACTIVITY")
+    var showClearAllDialog by remember { mutableStateOf(false) }
+
+    if (showClearAllDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearAllDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.DeleteSweep,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = {
+                Text(
+                    text = "Clear All Notifications?",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = "This will permanently remove all cached notifications stored on this device. You can sync new events anytime.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showClearAllDialog = false
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        viewModel.clearAllNotifications()
+                        coroutineScope.launch {
+                            snackbarHostState.showSnackbar("All notifications cleared")
+                        }
+                    }
+                ) {
+                    Text(
+                        text = "Clear All",
+                        color = MaterialTheme.colorScheme.error,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearAllDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 
     Box(
         modifier = modifier
@@ -130,6 +192,7 @@ fun NotificationsScreen(
                 if (unreadCount > 0) {
                     IconButton(
                         onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             viewModel.markAllNotificationsRead()
                             coroutineScope.launch {
                                 snackbarHostState.showSnackbar("All notifications marked as read")
@@ -147,10 +210,8 @@ fun NotificationsScreen(
 
                 IconButton(
                     onClick = {
-                        viewModel.clearAllNotifications()
-                        coroutineScope.launch {
-                            snackbarHostState.showSnackbar("Notifications cleared")
-                        }
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        showClearAllDialog = true
                     },
                     modifier = Modifier.testTag("clear_all_notifications_button")
                 ) {
@@ -205,9 +266,7 @@ fun NotificationsScreen(
                         focusedBorderColor = MaterialTheme.colorScheme.primary,
                         unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
                     ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
 
@@ -224,7 +283,10 @@ fun NotificationsScreen(
                 item {
                     FilterChip(
                         selected = unreadOnly,
-                        onClick = { viewModel.toggleUnreadOnlyFilter() },
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            viewModel.toggleUnreadOnlyFilter()
+                        },
                         label = {
                             Text(
                                 text = "Unread ($unreadCount)",
@@ -281,7 +343,10 @@ fun NotificationsScreen(
 
                     FilterChip(
                         selected = isSelected,
-                        onClick = { viewModel.setNotificationCategory(category) },
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            viewModel.setNotificationCategory(category)
+                        },
                         label = {
                             Text(
                                 text = label,
@@ -318,12 +383,18 @@ fun NotificationsScreen(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
             val groupedNotifications = remember(notifications) {
+                val now = Calendar.getInstance()
+                val nowYear = now.get(Calendar.YEAR)
+                val nowDayOfYear = now.get(Calendar.DAY_OF_YEAR)
+                val nowTime = now.timeInMillis
+                val oneDayMillis = 24L * 60 * 60 * 1000
+
                 notifications.groupBy { item ->
-                    val now = Calendar.getInstance()
                     val itemCal = Calendar.getInstance().apply { timeInMillis = item.timestamp }
-                    val isSameDay = now.get(Calendar.YEAR) == itemCal.get(Calendar.YEAR) &&
-                            now.get(Calendar.DAY_OF_YEAR) == itemCal.get(Calendar.DAY_OF_YEAR)
-                    val diffDays = ((now.timeInMillis - item.timestamp) / (1000 * 60 * 60 * 24)).toInt()
+                    val isSameDay = nowYear == itemCal.get(Calendar.YEAR) &&
+                            nowDayOfYear == itemCal.get(Calendar.DAY_OF_YEAR)
+                    val diffMillis = (nowTime - item.timestamp).coerceAtLeast(0L)
+                    val diffDays = (diffMillis / oneDayMillis).toInt()
                     when {
                         isSameDay -> "Today"
                         diffDays <= 1 -> "Yesterday"
@@ -362,18 +433,22 @@ fun NotificationsScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         groupedNotifications.forEach { (dateHeader, itemsInGroup) ->
-                            item(key = "header_$dateHeader") {
-                                Text(
-                                    text = dateHeader.uppercase(),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 1.sp,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 4.dp, vertical = 4.dp)
-                                        .animateItem()
-                                )
+                            stickyHeader(key = "header_$dateHeader") {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.background,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        text = dateHeader.uppercase(),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 1.sp,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 4.dp, vertical = 6.dp)
+                                    )
+                                }
                             }
                             items(itemsInGroup, key = { it.id }) { item ->
                                 MadoSwipeToDismissItem(
@@ -394,6 +469,9 @@ fun NotificationsScreen(
                                     NotificationHistoryItem(
                                         notification = item,
                                         onOpen = {
+                                            if (!item.isRead) {
+                                                viewModel.markNotificationRead(item.id)
+                                            }
                                             openExternalUrl(
                                                 context,
                                                 if (item.targetUrl.isNotBlank()) item.targetUrl
@@ -559,60 +637,57 @@ private fun NotificationHistoryItem(
                 ) {
                     // Mark as Read Button
                     if (isUnread) {
-                        Surface(
-                            color = MaterialTheme.colorScheme.secondaryContainer,
+                        FilledTonalButton(
+                            onClick = onMarkRead,
                             shape = MaterialTheme.shapes.small,
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                            ),
                             modifier = Modifier
-                                .clickable { onMarkRead() }
-                                .border(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.3f), MaterialTheme.shapes.small)
+                                .height(32.dp)
+                                .testTag("mark_read_${notification.id}")
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Check,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    modifier = Modifier.size(12.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "Mark Read",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = "Mark as read",
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Mark Read",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
                         }
                     }
 
                     // Open in GitHub Button
-                    Surface(
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    OutlinedButton(
+                        onClick = onOpen,
                         shape = MaterialTheme.shapes.small,
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            contentColor = MaterialTheme.colorScheme.primary
+                        ),
                         modifier = Modifier
-                            .clickable { onOpen() }
-                            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.small)
+                            .height(32.dp)
+                            .testTag("open_github_${notification.id}")
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Open",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                            contentDescription = "Open in GitHub",
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Open",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Medium
+                        )
                     }
 
                     // Dismiss / Delete Button

@@ -1,5 +1,39 @@
 # MadoGit Release Notes
 
+## MadoGit v0.3.0-beta (Security Hardening, ETag Cache & Architecture Refactor)
+
+This release delivers critical security hardening for credential storage and external intents, non-destructive Room database migrations, persistent OkHttp caching with socket pooling for GitHub API rate limit conservation, UI modularization, and automated Jetpack Compose instrumented UI test coverage.
+
+> **Notice: Experimental Release**  
+> This is an active beta release intended for dogfooding, testing, and feedback. Features, UI components, and internal schemas are continuously evolving.
+
+---
+
+### Highlights & Features in v0.3.0-beta
+
+#### Security Hardening & Cryptographic Integrity
+- **Fail-Closed Keystore Encryption**: Updated `CryptoManager.encrypt()` to throw an `IllegalStateException` upon encryption failure rather than silently persisting plaintext tokens.
+- **Strict URI Sanitization**: External link navigations and notification tap intent builders now strictly validate URI schemes, rejecting unsafe schemes and permitting only `https://` and `http://`.
+- **Architectural OAuth Delegation**: Delegated OAuth code exchange and credential management from UI ViewModels directly to `GitHubRepository`.
+
+#### Data Integrity & Schema Preservation
+- **Non-Destructive Room Migrations**: Upgraded Room Database to schema version 3 with structured migration `MIGRATION_2_3`, preserving user notifications, monitored repositories, and sync history across upgrades.
+- **Native Repository Language**: Added the standard `language` field to `GitHubRepoDto` and `MonitoredRepoEntity`, eliminating heuristic repository language parsing.
+- **Accidental Wipe Protection**: Added a Material 3 confirmation dialog before clearing notification history in the Notifications screen.
+- **Clock Skew Resilience**: Corrected chronological date grouping calculations against clock skew and eliminated redundant Calendar allocations.
+
+#### Network & Rate-Limit Optimization
+- **On-Disk OkHttp Cache (ETags / 304 Not Modified)**: Implemented a 15 MB persistent OkHttp cache (`http_github_cache`) enabling automatic conditional HTTP requests that do not consume GitHub API hourly quota.
+- **Shared Connection & Socket Pooling**: Reused `baseHttpClient.newBuilder()` across Retrofit instances to share TCP keep-alive sockets, thread dispatchers, SSL caches, and Moshi converters.
+- **Traceable Sync Logging**: Replaced empty catch blocks in secondary sync routines with descriptive debug logging.
+
+#### UI Modularization & Testing
+- **Extracted Settings Components**: Separated reusable settings cards (`SettingsSectionCard`, `CategoryMasterToggle`, `SubOptionCheckbox`, `DiagnosticItem`, `PalettePreviewRow`) into `SettingsComponents.kt`.
+- **String Resource Localization**: Migrated hardcoded user-facing settings strings into `res/values/strings.xml`.
+- **Jetpack Compose Instrumented UI Tests**: Added automated on-device Compose UI instrumented tests (`MadoGitUiInstrumentedTest.kt`) validating onboarding flows, permissions, and authentication tab switching.
+
+---
+
 ## MadoGit v0.2.0-beta (Material You & UI/UX Expressive Revamp)
 
 This release delivers a comprehensive Material 3 Expressive UI and Material You revamp, introducing native mobile gestures, fluid screen transitions, smart notification grouping, and developer-focused visual tokens.

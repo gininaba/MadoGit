@@ -121,12 +121,13 @@ The theming engine lives in `com.aipos.madogit.ui.theme`:
 
 ### 4. Persistence Layer (Room)
 
-MadoGit uses Room with the Kotlin Symbol Processing (KSP) engine:
+MadoGit uses Room (schema version 3) with the Kotlin Symbol Processing (KSP) engine:
 
-- **MonitoredRepoEntity** (`monitored_repositories`): Tracks repository metadata, monitoring status (`isMonitored`), last sync timestamp, and open issue/PR counts.
+- **MonitoredRepoEntity** (`monitored_repos`): Tracks repository metadata, primary programming language (`language`), monitoring status (`isMonitored`), last sync timestamp, and open issue/PR counts.
 - **GitHubNotificationEntity** (`notifications`): Cached GitHub notification threads including unread status, subject type, repository identifiers, and direct URLs.
 - **ProcessedEventEntity** (`processed_events`): Deduplication ledger storing composite SHA-256 hashes of event IDs and timestamps to prevent duplicate alerts.
 - **SyncLogEntity** (`sync_logs`): Operational audit trail recording sync timestamps, duration, items processed, and rate limits.
+- **Non-Destructive Migrations**: Production database upgrades are preserved with structured `Migration` definitions (such as `MIGRATION_2_3`), avoiding data loss.
 
 ### 5. Background Engine (WorkManager)
 

@@ -23,7 +23,8 @@ data class MonitoredRepoEntity(
     val defaultBranch: String,
     val htmlUrl: String,
     val isMonitored: Boolean = false,
-    val lastSyncedAt: Long = 0L
+    val lastSyncedAt: Long = 0L,
+    val language: String? = null
 )
 
 @Entity(
