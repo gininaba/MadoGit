@@ -12,6 +12,8 @@ import com.aipos.madogit.data.api.models.GitHubWorkflowRunsResponse
 import com.aipos.madogit.data.api.models.OAuthTokenResponse
 import retrofit2.Response
 import retrofit2.http.Body
+import retrofit2.http.Field
+import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
 import retrofit2.http.Headers
 import retrofit2.http.PATCH
@@ -96,13 +98,14 @@ interface GitHubApiService {
     @GET("rate_limit")
     suspend fun getRateLimit(): GitHubRateLimitResponse
 
+    @FormUrlEncoded
     @POST
     @Headers("Accept: application/json")
     suspend fun exchangeOAuthToken(
         @Url url: String = "https://github.com/login/oauth/access_token",
-        @Query("client_id") clientId: String,
-        @Query("client_secret") clientSecret: String,
-        @Query("code") code: String,
-        @Query("redirect_uri") redirectUri: String
+        @Field("client_id") clientId: String,
+        @Field("client_secret") clientSecret: String,
+        @Field("code") code: String,
+        @Field("redirect_uri") redirectUri: String
     ): OAuthTokenResponse
 }

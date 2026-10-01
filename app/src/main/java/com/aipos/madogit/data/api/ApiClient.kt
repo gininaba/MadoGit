@@ -15,6 +15,7 @@ import java.util.concurrent.TimeUnit
 
 object ApiClient {
     private const val GITHUB_BASE_URL = "https://api.github.com/"
+    @Volatile
     private var httpCache: Cache? = null
 
     private val sharedMoshi: Moshi by lazy {
@@ -28,16 +29,15 @@ object ApiClient {
             level = if (com.aipos.madogit.BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY else HttpLoggingInterceptor.Level.NONE
         }
 
-        val builder = OkHttpClient.Builder()
+        OkHttpClient.Builder()
             .connectTimeout(25, TimeUnit.SECONDS)
             .readTimeout(25, TimeUnit.SECONDS)
             .writeTimeout(25, TimeUnit.SECONDS)
             .addInterceptor(loggingInterceptor)
-
-        httpCache?.let { builder.cache(it) }
-        builder.build()
+            .build()
     }
 
+    @Synchronized
     fun initCache(cacheDir: File) {
         if (httpCache == null) {
             val cacheSize = 15L * 1024 * 1024 // 15 MB HTTP response cache for GitHub ETag / 304 support
@@ -80,10 +80,11 @@ object ApiClient {
             response
         }
 
-        val okHttpClient = baseHttpClient.newBuilder()
+        val builder = baseHttpClient.newBuilder()
             .addInterceptor(authInterceptor)
             .addInterceptor(rateLimitInterceptor)
-            .build()
+        httpCache?.let { builder.cache(it) }
+        val okHttpClient = builder.build()
 
         return Retrofit.Builder()
             .baseUrl(GITHUB_BASE_URL)
@@ -107,9 +108,10 @@ object ApiClient {
             chain.proceed(requestBuilder.build())
         }
 
-        val okHttpClient = baseHttpClient.newBuilder()
+        val builder = baseHttpClient.newBuilder()
             .addInterceptor(authInterceptor)
-            .build()
+        httpCache?.let { builder.cache(it) }
+        val okHttpClient = builder.build()
 
         return Retrofit.Builder()
             .baseUrl(GITHUB_BASE_URL)

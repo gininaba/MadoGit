@@ -34,3 +34,6 @@ my-upload-key.jks
 .DS_Store
 */.DS_Store
 Thumbs.db
+
+# Agent
+.agent/
