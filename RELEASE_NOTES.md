@@ -1,5 +1,47 @@
 # MadoGit Release Notes
 
+## MadoGit v0.4.0-beta (Data Integrity Hardening, Lifecycle Sync & UI Stabilization)
+
+This release delivers critical data integrity hardening, lifecycle-driven background synchronization, security enhancements, and UI state stabilization across the application. It resolves key runtime bugs in notification deduplication, repository monitoring state preservation, pull request transition tracking, and WorkManager retry orchestration, backed by a comprehensive 60-test verification suite.
+
+> **Notice: Experimental Release**  
+> This is an active beta release intended for dogfooding, testing, and feedback. Features, UI components, and internal schemas are continuously evolving.
+
+---
+
+### Highlights & Features in v0.4.0-beta
+
+#### Data Integrity & Sync Engine Hardening
+- **Targeted URL Deduplication**: Restricted URL-based duplicate purging strictly to canonical pull request and issue URLs, preventing catastrophic deletion of distinct notifications sharing fallback repository URLs.
+- **Transactional Repository Refresh**: Ensured user repository monitoring selections and sync timestamps are preserved across remote updates; guarded stale repository pruning to execute only when full listings are retrieved.
+- **Silent Baseline Sync**: Established baseline synchronization semantics for new accounts and newly monitored repositories, silently importing existing unread threads to prevent notification floods on first sign-in.
+- **Pull Request State Transitions**: Added comprehensive transition tracking for pull requests. Moving from open to merged or closed-without-merge now updates existing database entities and alerts the user according to their notification preferences.
+- **Adaptive 3-Tier Rate Protection**: Enforced automatic quota preservation tiers (<100 critical, <500 conservative, >=500 normal) and bounded repository sweeps to 5 repos per cycle.
+
+#### Lifecycle & Background WorkManager Orchestration
+- **Auth-Driven WorkManager Scheduling**: Bound background polling directly to the authentication state in `GitHubNotifierApp`. Signing in automatically registers periodic work and runs an immediate initial sweep; signing out immediately cancels all scheduled work.
+- **Worker Exponential Retry & Terminal Policies**: Implemented `GitHubSyncWorker.resultFor()` with exponential 30-second backoff up to 3 attempts for transient failures, while instantly flagging HTTP 401 revocations as terminal failures.
+
+#### Security & Session Management
+- **Authorization Header Redaction**: Configured `HttpLoggingInterceptor` to redact `Authorization` bearer tokens in debug builds, preventing credential leakage in system logs.
+- **Mandatory OAuth CSRF Verification**: Enforced strict validation of the random UUID `state` parameter in OAuth callbacks, rejecting authentication requests with absent or mismatched state tokens.
+- **Session Revocation Handling**: Handled HTTP 401 Unauthorized responses by clearing Keystore-stored credentials, cancelling background tasks, and transitioning to an error state prompting re-login.
+- **Complete Account Disconnect & Wipe**: Ensured sign-out and account switching purge all Room database tables, cancel active system notifications, and evict cached HTTP data to prevent cross-account contamination.
+
+#### UI Stabilization & Navigation Polishing
+- **Calendar-Day Date Bucketing**: Replaced rolling 24-hour window division with calendar-day boundary comparisons in `notificationDayBucket()`, ensuring items are accurately classified as "Today", "Yesterday", "This Week", and "Earlier".
+- **Relative Time Coherence**: Aligned `formatRelativeTime()` with calendar day buckets so item subtitles and section headers are visually consistent.
+- **Persistent View State on Rotation**: Converted triage tabs, repository filter chips, and onboarding steps to `rememberSaveable`, preserving user selections across device rotation and process recreation.
+- **In-App Notification Routing**: Added handler for "View in App" notification intent actions, routing users directly to the selected notification.
+- **Exposed Notification Settings**: Added UI controls for previously unexposed preferences: PR closed without merge, thread comments, repository activity (commits pushed, commit comments), and auto-monitoring of new repositories.
+- **Dynamic Versioning & Lint Compatibility**: Replaced hardcoded version strings with `BuildConfig.VERSION_NAME` and annotated API-specific theme attributes with `tools:targetApi`.
+
+#### Automated Testing & Verification
+- **Expanded Test Suite (60/60 Passing)**: Added `SyncEngineTest` (23 tests), `SyncWorkerPolicyTest` (3 tests), `TokenManagerTest` (3 tests), and `NotificationDayBucketTest` (1 test) alongside existing suites.
+- **Clean Build Validation**: Verified clean compilation across `compileDebugKotlin`, `compileDebugAndroidTestKotlin`, `lintDebug` (0 errors), `assembleDebug`, and `assembleRelease` with R8 optimization.
+
+---
+
 ## MadoGit v0.3.0-beta (Security Hardening, ETag Cache & Architecture Refactor)
 
 This release delivers critical security hardening for credential storage and external intents, non-destructive Room database migrations, persistent OkHttp caching with socket pooling for GitHub API rate limit conservation, UI modularization, and automated Jetpack Compose instrumented UI test coverage.
