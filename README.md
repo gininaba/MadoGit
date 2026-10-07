@@ -32,6 +32,7 @@
 
 ## Table of Contents
 
+- [App Preview & Screenshots](#app-preview--screenshots)
 - [1. Overview & Philosophy](#1-overview--philosophy)
 - [2. Key Architectural Pillars](#2-key-architectural-pillars)
 - [3. Architecture & Data Flow](#3-architecture--data-flow)
@@ -44,6 +45,55 @@
 - [10. Project Structure](#10-project-structure)
 - [11. Testing & Quality Assurance](#11-testing--quality-assurance)
 - [12. License](#12-license)
+
+---
+
+## App Preview & Screenshots
+
+<h3 align="center">Daily Workflow & Navigation</h3>
+
+<table align="center">
+  <tr>
+    <th align="center" width="25%">Dashboard</th>
+    <th align="center" width="25%">Notification Inbox</th>
+    <th align="center" width="25%">Monitored Repositories</th>
+    <th align="center" width="25%">Priority Assistant</th>
+  </tr>
+  <tr valign="top">
+    <td align="center"><img src="docs/assets/screenshots/03-dashboard.png" alt="MadoGit Dashboard" width="220" /></td>
+    <td align="center"><img src="docs/assets/screenshots/04-inbox.png" alt="Notification Inbox" width="220" /></td>
+    <td align="center"><img src="docs/assets/screenshots/05-repositories.png" alt="Monitored Repositories" width="220" /></td>
+    <td align="center"><img src="docs/assets/screenshots/06-assistant.png" alt="GitHub Assistant" width="220" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Real-time quota meter, status cards & activity timeline</sub></td>
+    <td align="center"><sub>Chronological date grouping, category chips & swipe actions</sub></td>
+    <td align="center"><sub>Language dot indicators, branch tags & granular sync toggles</sub></td>
+    <td align="center"><sub>Actionable triage, review requests & Inbox Zero status</sub></td>
+  </tr>
+</table>
+
+<br />
+
+<h3 align="center">Setup, Security & Personalization</h3>
+
+<table align="center">
+  <tr>
+    <th align="center" width="33%">Welcome & Onboarding</th>
+    <th align="center" width="33%">Token & OAuth Authentication</th>
+    <th align="center" width="33%">Material You Monet Theming</th>
+  </tr>
+  <tr valign="top">
+    <td align="center"><img src="docs/assets/screenshots/01-onboarding.png" alt="Welcome Onboarding" width="220" /></td>
+    <td align="center"><img src="docs/assets/screenshots/02-auth.png" alt="Authentication" width="220" /></td>
+    <td align="center"><img src="docs/assets/screenshots/07-settings.png" alt="Settings & Theming" width="220" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Native Android push alerts & zero intermediate servers</sub></td>
+    <td align="center"><sub>PAT & OAuth modes with Android Keystore encryption</sub></td>
+    <td align="center"><sub>Dynamic wallpaper palette swatches & channel controls</sub></td>
+  </tr>
+</table>
 
 ---
 
