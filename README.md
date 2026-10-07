@@ -65,10 +65,10 @@ Modern software developers operate in noisy notification environments. GitHub no
 | Pillar | Implementation | Technical Benefit |
 |---|---|---|
 | **Zero Intermediate Servers** | Direct TLS 1.3 to `api.github.com` | Complete privacy; credentials never leave the host device. |
-| **Encrypted Token Storage** | `EncryptedSharedPreferences` + Android Keystore | Hardware-backed AES-256 GCM credential security. |
+| **Encrypted Token Storage** | `EncryptedSharedPreferences` + Android Keystore | Hardware-backed AES-256 GCM credential security with memory-level caching. |
 | **Material You Monet Theming** | Dynamic ColorScheme + Harmonized Fallbacks | Native system integration adapting to user wallpaper colors. |
-| **Smart Rate-Limit Guard** | Telemetry inspection + ETag Conditional GETs | Protects the 5,000 req/hr GitHub quota with 304 Not Modified caching. |
-| **Event Fingerprinting** | SHA-256 Hash Digest in `processed_events` | Guarantees zero duplicate alerts across recurring background syncs. |
+| **Smart Rate-Limit Guard** | 3-tier safety throttling + OkHttp disk cache | Preserves GitHub quota with conservative modes and 15 MB HTTP caching. |
+| **Event Ledger** | Deterministic ID persistence in `processed_events` | Guarantees zero duplicate alerts and tracks PR state transitions cleanly. |
 | **Battery-Conscious Sync** | Android WorkManager + Doze Constraints | Executes background polling only when device conditions are optimal. |
 
 ---
@@ -115,12 +115,12 @@ graph TD
 
 ```
 1. WorkManager triggers periodic GitHubSyncWorker (or user initiates pull-to-refresh).
-2. Worker verifies network state and remaining GitHub API rate-limit quota.
-3. Retrofit issues conditional GET requests carrying cached ETag headers.
-4. If 304 Not Modified: Network payload is zero; sync cycle concludes immediately.
-5. If 200 OK: Response models are parsed via Moshi and updated in Room.
-6. Unique event fingerprints are computed and cross-referenced against processed_events.
-7. Novel events trigger NotificationHelper, posting to dedicated system channels.
+2. Worker evaluates network state and remaining GitHub API rate-limit tier (Normal, Conservative, Critical).
+3. Requests utilize OkHttp disk cache (15 MB) for transparent HTTP 304 conditional revalidation.
+4. Repositories are polled in a round-robin cycle (up to 5 per sweep), least recently synced first.
+5. New events are deduplicated against Room entities and recorded in processed_events.
+6. First sync establishes a silent baseline; subsequent syncs alert on new items or state transitions.
+7. Novel events trigger NotificationHelper, posting to dedicated Android system channels.
 8. StateFlow emits updated entity lists to active Jetpack Compose UI screens.
 ```
 
@@ -185,11 +185,11 @@ MadoGit creates dedicated notification channels on Android 8.0+ (API 26+) to ens
 
 | Channel Name | Channel ID | Priority | Description |
 |---|---|---|---|
-| **Pull Requests** | `channel_prs` | High | Review requests, assignments, approvals, and merges. |
-| **Issues & Mentions** | `channel_issues` | High | Issue assignments, mentions, and issue state transitions. |
-| **GitHub Actions** | `channel_workflows` | Default | Continuous integration failures, cancellations, and workflow completions. |
+| **Pull Requests** | `channel_pull_requests` | High | Review requests, assignments, approvals, merges, and closures. |
+| **Issues & Mentions** | `channel_issues` | High | Issue assignments, mentions, comments, and issue state transitions. |
+| **GitHub Actions** | `channel_actions` | Default | Continuous integration failures, cancellations, and workflow completions. |
 | **Releases** | `channel_releases` | Default | New releases and tags published in monitored repositories. |
-| **Repository Activity** | `channel_activity` | Low | General repository events, stars, and push events. |
+| **Repository Activity** | `channel_repo_activity` | Low | General repository events, commits pushed, and comment activity. |
 
 ### System Features:
 - Direct notification actions: "Open on GitHub" (browser/app) and "View in App".
@@ -331,10 +331,10 @@ madogit/
 
 MadoGit maintains a comprehensive automated testing pipeline:
 
-- **Unit Tests**: Verify business logic, date formatting, filter rules, and preference schemas.
-- **Robolectric Tests**: Execute Android framework-dependent tests on the JVM without an emulator, testing Context resource extraction, Room migrations, and token encryption failure contracts.
+- **Unit & Integration Tests**: 60 automated test cases verifying business logic, calendar-day date formatting, PR state transitions, quota throttling, Room migrations, and encryption contracts.
+- **Robolectric Tests**: Execute Android framework-dependent tests on the JVM without an emulator, testing Context resource extraction, notification channel filters, and WorkManager retry policies.
 - **Connected Instrumented UI Tests**: Execute automated Jetpack Compose UI tests on physical devices or emulators, verifying onboarding flows, permission handling, and authentication tabs.
-- **Continuous Validation**: All pull requests must pass `./gradlew testDebugUnitTest` and compile without errors.
+- **Continuous Validation**: All changes must pass `./gradlew testDebugUnitTest` and compile cleanly with `./gradlew assembleDebug assembleRelease`.
 
 ```bash
 # Execute local unit and Robolectric verification suite

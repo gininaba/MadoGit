@@ -61,6 +61,7 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import com.aipos.madogit.ui.components.MadoPullToRefreshBox
 import com.aipos.madogit.ui.components.openExternalUrl
@@ -73,7 +74,7 @@ fun AssistantScreen(
     val context = LocalContext.current
     val summary by viewModel.assistantSummary.collectAsState()
     val syncStatus by viewModel.syncStatus.collectAsState()
-    var selectedTriageTab by remember { mutableIntStateOf(0) }
+    var selectedTriageTab by rememberSaveable { mutableIntStateOf(0) }
 
     val filteredItems = remember(summary.topActionableItems, selectedTriageTab) {
         when (selectedTriageTab) {
@@ -112,13 +113,13 @@ fun AssistantScreen(
 
             SyncButton(
                 isSyncing = syncStatus is com.aipos.madogit.data.repository.SyncStatus.Syncing,
-                onSyncClick = { viewModel.triggerSync(context) }
+                onSyncClick = { viewModel.triggerSync() }
             )
         }
 
         MadoPullToRefreshBox(
             isRefreshing = syncStatus is com.aipos.madogit.data.repository.SyncStatus.Syncing,
-            onRefresh = { viewModel.triggerSync(context) },
+            onRefresh = { viewModel.triggerSync() },
             modifier = Modifier.fillMaxSize()
         ) {
             LazyColumn(
@@ -222,7 +223,7 @@ fun AssistantScreen(
                                 "Everything on your monitored repositories is up-to-date, reviewed, and passing CI."
                             else "No items found under this triage category.",
                             actionButtonLabel = "Sync Latest",
-                            onActionClick = { viewModel.triggerSync(context) }
+                            onActionClick = { viewModel.triggerSync() }
                         )
                     }
                 } else {

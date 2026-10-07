@@ -57,7 +57,7 @@ graph TD
 
     subgraph Network Layer ["Network Engine"]
         Retrofit["Retrofit 2 + Moshi"]
-        OkHttp["OkHttpClient (Auth Interceptor + Cache)"]
+        OkHttp["OkHttpClient (Auth Interceptor + Header Redaction + 15MB Cache)"]
         GitHubAPI["GitHub REST API (v3)"]
         Retrofit --> OkHttp
         OkHttp --> GitHubAPI
@@ -113,11 +113,13 @@ The theming engine lives in `com.aipos.madogit.ui.theme`:
 
 - Mediates between the remote API (`GitHubApiService`) and the local database (`AppDatabase`).
 - Implements the offline-first synchronization algorithm:
-  1. Inspects rate-limit availability before executing network requests.
-  2. Dispatches conditional GET requests with ETag support.
-  3. Inserts or updates entities in Room within transactional boundaries.
-  4. Detects novel items and delegates to `NotificationHelper` for user alerting.
-  5. Records execution metrics into `sync_logs`.
+  1. Inspects rate-limit availability (Normal, Conservative, Critical) before polling.
+  2. Leverages transparent OkHttp disk cache (15 MB) for HTTP 304 conditional revalidation.
+  3. Polls monitored repositories in a round-robin schedule (up to 5 per sweep).
+  4. Inserts or updates entities in Room within transactional boundaries.
+  5. Tracks state transitions (such as PR merges and closures) and delegates to `NotificationHelper` for user alerting.
+  6. Establishes a silent baseline on initial sync, suppressing alert floods.
+  7. Trims execution metrics in `sync_logs` to 200 rows.
 
 ### 4. Persistence Layer (Room)
 
@@ -125,15 +127,16 @@ MadoGit uses Room (schema version 3) with the Kotlin Symbol Processing (KSP) eng
 
 - **MonitoredRepoEntity** (`monitored_repos`): Tracks repository metadata, primary programming language (`language`), monitoring status (`isMonitored`), last sync timestamp, and open issue/PR counts.
 - **GitHubNotificationEntity** (`notifications`): Cached GitHub notification threads including unread status, subject type, repository identifiers, and direct URLs.
-- **ProcessedEventEntity** (`processed_events`): Deduplication ledger storing composite SHA-256 hashes of event IDs and timestamps to prevent duplicate alerts.
+- **ProcessedEventEntity** (`processed_events`): Deduplication ledger storing unique event IDs, repository names, and event types to prevent duplicate alerts.
 - **SyncLogEntity** (`sync_logs`): Operational audit trail recording sync timestamps, duration, items processed, and rate limits.
 - **Non-Destructive Migrations**: Production database upgrades are preserved with structured `Migration` definitions (such as `MIGRATION_2_3`), avoiding data loss.
 
 ### 5. Background Engine (WorkManager)
 
-- **WorkManagerScheduler**: Schedules periodic background synchronization using `PeriodicWorkRequestBuilder`. Supports user-configurable intervals (15 min, 30 min, 1 hr, 2 hr, 6 hr).
+- **WorkManagerScheduler**: Schedules periodic background synchronization using `PeriodicWorkRequestBuilder`. Supports user-configurable intervals (15 min, 30 min, 1 hr, 2 hr, 6 hr, or manual only) with exponential retry backoff.
+- **Lifecycle Integration**: `GitHubNotifierApp` observes `TokenManager.authState` directly to automatically register periodic work and trigger an immediate initial sweep upon sign-in, while unregistering background jobs on sign-out.
 - **Constraints**: Enforces `NetworkType.CONNECTED` (with optional `UNMETERED` flag) and `RequiresBatteryNotLow` to avoid draining device resources during low battery states.
-- **GitHubSyncWorker**: A `CoroutineWorker` that executes synchronization routines in the background, detects actionable alerts, and generates notifications even if the app process is terminated.
+- **GitHubSyncWorker**: A `CoroutineWorker` that executes synchronization routines in the background, maps outcomes to retry policies with an attempt cap of 3, and generates notifications even if the app process is terminated.
 
 ---
 

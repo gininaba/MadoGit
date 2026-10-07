@@ -209,6 +209,34 @@ class ExampleRobolectricTest {
     }
 
     @Test
+    fun `activity filtering honours commit and comment toggles for commit threads`() {
+        // Commit threads arrive with eventType derived from GitHub's `reason` (e.g. SUBSCRIBED), never "COMMIT".
+        val commitThread = GitHubNotificationEntity(
+            id = "thread_99",
+            eventType = "SUBSCRIBED",
+            category = "ACTIVITY",
+            repoFullName = "octocat/Hello-World",
+            title = "Fix typo",
+            body = "Commit",
+            author = "octocat",
+            avatarUrl = null,
+            targetUrl = "https://github.com/octocat/Hello-World/commit/abc123",
+            timestamp = 7000L,
+            actionState = "UNREAD"
+        )
+        val commitComment = commitThread.copy(id = "thread_100", eventType = "COMMENT")
+
+        val all = NotificationPreferences()
+        assertTrue(NotificationHelper.shouldNotify(commitThread, all))
+        assertTrue(NotificationHelper.shouldNotify(commitComment, all))
+
+        assertFalse(NotificationHelper.shouldNotify(commitThread, all.copy(activityCommits = false)))
+        assertTrue(NotificationHelper.shouldNotify(commitComment, all.copy(activityCommits = false)))
+        assertFalse(NotificationHelper.shouldNotify(commitComment, all.copy(activityComments = false)))
+        assertFalse(NotificationHelper.shouldNotify(commitThread, all.copy(activityMaster = false)))
+    }
+
+    @Test
     fun `openExternalUrl does not crash on empty or null URL`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         // Should handle safely without throwing unhandled exceptions

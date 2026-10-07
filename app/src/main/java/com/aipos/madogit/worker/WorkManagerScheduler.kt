@@ -1,6 +1,7 @@
 package com.aipos.madogit.worker
 
 import android.content.Context
+import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
@@ -11,6 +12,8 @@ import androidx.work.WorkManager
 import java.util.concurrent.TimeUnit
 
 object WorkManagerScheduler {
+
+    private const val RETRY_BACKOFF_SECONDS = 30L
 
     fun schedulePeriodicSync(
         context: Context,
@@ -39,6 +42,7 @@ object WorkManagerScheduler {
                 5L, TimeUnit.MINUTES // 5 min flex interval
             )
                 .setConstraints(constraints)
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, RETRY_BACKOFF_SECONDS, TimeUnit.SECONDS)
                 .build()
 
             workManager.enqueueUniquePeriodicWork(
@@ -59,6 +63,7 @@ object WorkManagerScheduler {
 
             val oneTimeWork = OneTimeWorkRequestBuilder<GitHubSyncWorker>()
                 .setConstraints(constraints)
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, RETRY_BACKOFF_SECONDS, TimeUnit.SECONDS)
                 .build()
 
             WorkManager.getInstance(context).enqueueUniqueWork(
@@ -73,7 +78,9 @@ object WorkManagerScheduler {
 
     fun cancelAll(context: Context) {
         try {
-            WorkManager.getInstance(context).cancelUniqueWork(GitHubSyncWorker.WORK_NAME_PERIODIC)
+            val workManager = WorkManager.getInstance(context)
+            workManager.cancelUniqueWork(GitHubSyncWorker.WORK_NAME_PERIODIC)
+            workManager.cancelUniqueWork(GitHubSyncWorker.WORK_NAME_ONE_TIME)
         } catch (e: Exception) {
             android.util.Log.e("WorkManagerScheduler", "Failed to cancel work: ${e.message}")
         }

@@ -22,6 +22,12 @@ interface RepoDao {
     @Query("SELECT * FROM monitored_repos WHERE isMonitored = 1")
     suspend fun getMonitoredReposSync(): List<MonitoredRepoEntity>
 
+    @Query("SELECT * FROM monitored_repos")
+    suspend fun getAllReposSync(): List<MonitoredRepoEntity>
+
+    @Query("DELETE FROM monitored_repos WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<Long>)
+
     @Query("SELECT * FROM monitored_repos WHERE isMonitored = 1 ORDER BY lastSyncedAt ASC LIMIT :limit")
     suspend fun getMonitoredReposToSync(limit: Int = 5): List<MonitoredRepoEntity>
 
@@ -126,6 +132,12 @@ interface SyncLogDao {
 
     @Query("SELECT * FROM sync_logs ORDER BY timestamp DESC LIMIT 1")
     suspend fun getLatestLog(): SyncLogEntity?
+
+    @Query("SELECT COUNT(*) FROM sync_logs WHERE status = 'SUCCESS'")
+    suspend fun getSuccessfulSyncCount(): Int
+
+    @Query("DELETE FROM sync_logs WHERE id NOT IN (SELECT id FROM sync_logs ORDER BY timestamp DESC LIMIT :keep)")
+    suspend fun pruneLogs(keep: Int = 200)
 
     @Query("DELETE FROM sync_logs")
     suspend fun clearLogs()

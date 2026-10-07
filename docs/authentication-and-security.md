@@ -18,11 +18,13 @@ Credentials (Personal Access Tokens and OAuth Access Tokens) are persisted using
 - Encryption standard: AES-256 GCM (`AES/GCM/NoPadding`) for secret values.
 - Fail-closed contract: `CryptoManager.encrypt()` throws `IllegalStateException` if Keystore encryption fails, completely preventing unencrypted plaintext fallback.
 - Key protection: Keystore master keys are generated with 256-bit AES encryption.
-- Memory lifecycle: Tokens reside in memory only during active execution scopes and are cleared upon sign-out.
+- Memory lifecycle: An in-memory cached token avoids repeated Keystore decryptions on hot paths and is purged immediately upon sign-out.
+- Logging hygiene: `HttpLoggingInterceptor` redacts `Authorization` headers on debug builds to prevent token leakage in system logcat.
 
 ### Intent & Deep Link Sanitization
 - Outbound intent launches and notification tap `PendingIntent` targets strictly sanitize URIs, accepting only valid `https://` and `http://` schemes.
-- OAuth deep links (`ghnotifier://oauth/callback`) require cryptographic state verification (`state` token) to guard against cross-site request forgery (CSRF).
+- OAuth deep links (`ghnotifier://oauth/callback`) require mandatory cryptographic state verification (`state` UUID parameter) matching `TokenManager.getOAuthState()` to guard against cross-site request forgery (CSRF). Mismatched or absent state tokens immediately reject authentication.
+- Single-use intent consumption: authorization codes and notification IDs are consumed and cleared on first read (`intent.data = null`), preventing duplicate processing on configuration changes.
 
 ---
 
@@ -85,8 +87,16 @@ MadoGit requests only standard Android permissions necessary for background oper
 
 ## Account Disconnection & Data Purging
 
-When a user signs out from the Settings screen:
-1. `TokenManager.clearToken()` deletes stored tokens from `EncryptedSharedPreferences`.
-2. WorkManager synchronization jobs are cancelled via `WorkManager.cancelAllWork()`.
-3. Local Room database tables (`monitored_repositories`, `notifications`, `processed_events`, `sync_logs`) are cleared.
-4. Cached HTTP responses and image caches in Coil are evicted.
+When a user signs out from the Settings screen or switches accounts:
+1. `TokenManager.clearToken()` deletes stored tokens from `EncryptedSharedPreferences` and resets in-memory credentials.
+2. Active Android notifications are immediately dismissed via `NotificationDispatcher.cancelAll()`.
+3. WorkManager synchronization jobs are cancelled via `WorkManagerScheduler.cancelAll()`.
+4. Local Room database tables (`monitored_repositories`, `notifications`, `processed_events`, `sync_logs`) are completely wiped to prevent cross-account data leakage.
+5. Cached HTTP responses in OkHttp and image caches are cleared.
+
+### Automatic Session Expiration Handling
+
+If GitHub returns HTTP 401 Unauthorized during background polling (e.g. user revoked token or session expired):
+1. Stored tokens are purged immediately.
+2. The authentication state transitions to `AuthState.Error("Session expired or token revoked")`.
+3. Background retries are cancelled to avoid repeated unauthorized requests.

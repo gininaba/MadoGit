@@ -10,87 +10,71 @@ MadoGit implements a multi-tiered synchronization engine engineered to maximize 
 
 ## Rate Limit Preservation Architecture
 
-### 1. Header Inspection & Live Telemetry
+### 1. Quota Telemetry
 
-Every HTTP response received by MadoGit passes through OkHttp network interceptors that parse rate limit telemetry:
+At the start of every sweep the engine calls `GET /rate_limit` (which does not count against the core quota) and caches `remaining` / `limit` in `PreferencesRepository`.
 
-- `X-RateLimit-Limit`: Maximum hourly allowance allocated to the authenticated user (typically 5,000).
-- `X-RateLimit-Remaining`: Number of requests remaining in the current window.
-- `X-RateLimit-Reset`: Unix epoch timestamp indicating when the quota resets.
-
-This data is exposed via `StateFlow` to the UI through the `RateLimitGauge` composable embedded in both the Dashboard Account Card and Settings Diagnostics section, and is cached in `PreferencesRepository`.
+This data is exposed via `StateFlow` to the UI through the `RateLimitGauge` composable embedded in both the Dashboard Account Card and Settings Diagnostics section.
 
 ### 2. Adaptive Safety Threshold
 
-Before initiating any synchronization cycle, the synchronization engine evaluates the remaining quota:
+Before initiating any synchronization cycle, the synchronization engine evaluates the remaining quota (`GitHubRepository.RATE_*_THRESHOLD`):
 
 | Remaining Quota | Sync Engine Behavior |
 |---|---|
-| > 500 requests | Full synchronization: fetches unread notifications, review requests, assigned issues, and monitored workflow statuses. |
-| 100 - 500 requests | Conservative mode: polls global `/notifications` and active pull requests only. Skips detailed CI workflow run polling. |
-| < 100 requests | Quota protection mode: suspends automatic repository sweeps. Emits a localized system status warning. Manual user-triggered syncs remain permitted with confirmation. |
+| ≥ 500 requests | Full sweep: `/notifications` plus, for each polled repo, workflow runs, pull requests, issues and releases. |
+| 100 – 499 requests | Conservative mode: `/notifications` plus pull requests only. Workflow, issue and release polling is skipped. |
+| < 100 requests | Quota protection mode: only `/notifications` is checked. A notice is shown via the app snackbar. |
+
+### 3. Bounded Per-Sweep Cost
+
+- **Round-robin polling**: at most 5 monitored repositories are polled per sweep, least-recently-synced first, so cost is constant regardless of how many repos are monitored.
+- **Repository list refresh**: the user's repository list (paginated, up to 10 × 100) is refreshed at most every 12 hours. Repositories no longer accessible are pruned only when the full listing was retrieved.
+- **Single flight**: overlapping sync requests (worker + pull-to-refresh) are coalesced by a mutex; the second caller returns immediately.
 
 ---
 
-## HTTP ETag & Conditional GET Protocol
+## HTTP Caching
 
-To minimize bandwidth consumption and avoid burning quota on unmutated data, MadoGit implements standard HTTP Conditional GET operations:
-
-```
-Client (MadoGit)                       GitHub REST API
-      |                                      |
-      |--- GET /notifications -------------->|
-      |<-- 200 OK (ETag: "abc123xyz") -------| (Stores ETag in Room)
-      |                                      |
-      |    [Next Sync Cycle - 15m Later]     |
-      |                                      |
-      |--- GET /notifications -------------->|
-      |    If-None-Match: "abc123xyz"        |
-      |                                      |
-      |<-- 304 Not Modified -----------------| (Zero body payload transferred)
-```
-
-1. Each successful HTTP 200 response saves the `ETag` header alongside the entity in Room.
-2. Subsequent requests submit the cached ETag using the `If-None-Match` header.
-3. If no new events have occurred, GitHub responds with `304 Not Modified`.
-4. The local database remains unchanged, and battery/CPU cycles are conserved.
+Conditional requests are delegated to OkHttp's disk `Cache` (`ApiClient.initCache`, 15 MB). OkHttp stores `ETag` / `Last-Modified` validators and revalidates automatically, so unchanged responses come back as `304 Not Modified` without app-level bookkeeping.
 
 ---
 
-## Event Deduplication & Fingerprint Hashing
+## Event Deduplication & Delivery
 
-When polling endpoints that lack unique server-side event IDs (such as workflow run transitions or comment edits), MadoGit generates deterministic fingerprint hashes.
+### Stable identifiers
 
-### Hashing Schema
+Every stored item has a deterministic id derived from GitHub's own ids: `gh_thread_<id>`, `gh_run_<id>`, `gh_pr_<id>`, `gh_issue_<id>`, `gh_release_<id>`. Repository-polled events are additionally recorded in `processed_events`, so items the user deletes are never re-imported.
 
-Each event is converted to a SHA-256 fingerprint:
-
-```
-Fingerprint = SHA-256(EventType + ":" + RepositoryId + ":" + EntityId + ":" + UpdatedTimestamp)
-```
-
-### Deduplication Pipeline
+### Delivery rules
 
 ```mermaid
 sequenceDiagram
-    participant Worker as Sync Worker
-    participant DB as Room (processed_events)
-    participant Notif as Notification Engine
+    participant Worker as Sync Engine
+    participant DB as Room
+    participant Notif as NotificationDispatcher
 
-    Worker->>Worker: Parse incoming remote event
-    Worker->>Worker: Generate SHA-256 fingerprint
-    Worker->>DB: Query processed_events by fingerprint
-    alt Event Exists in DB
-        DB-->>Worker: Match found (already dispatched)
-        Worker->>Worker: Skip notification generation
-    else Event Is New
-        DB-->>Worker: No match
-        Worker->>DB: Insert new ProcessedEventEntity
-        Worker->>Notif: Dispatch Android System Notification
+    Worker->>DB: Any SUCCESS sync log yet?
+    alt First sync (baseline)
+        Worker->>DB: Import items silently (no system notifications)
+    else Subsequent sync
+        Worker->>DB: Known id / URL / processed?
+        alt Known and unchanged
+            Worker->>Worker: Skip
+        else New, or state changed
+            Worker->>DB: Insert / update as unread
+            Worker->>Notif: Post (filtered by NotificationPreferences)
+        end
     end
 ```
 
-Events older than 30 days are automatically purged during maintenance sweeps to maintain lightweight database size.
+- **Baseline**: the very first sync (and the first poll of a newly monitored repo) imports existing items as already-seen, avoiding a notification flood.
+- **Thread resurfacing**: a GitHub notification thread that is unread again with a newer `updated_at` is marked unread locally and re-announced.
+- **Read on GitHub**: threads read elsewhere are marked read locally and their system notification is dismissed.
+- **Pull request transitions**: PRs are polled in all states (most recently updated first). A PR previously stored as open is updated in place and re-announced when it is merged or closed, honouring the *PR merged* / *PR closed* preferences.
+- **Workflow runs**: failed (incl. `timed_out`, `startup_failure`), succeeded and cancelled runs are recorded according to the GitHub Actions preferences.
+
+Sync logs are trimmed to the most recent 200 entries.
 
 ---
 
@@ -109,11 +93,20 @@ Background polling is managed exclusively through Google's `WorkManager` library
 
 ---
 
+### Scheduling
+
+- Periodic work is scheduled when the user signs in and cancelled when they sign out (`GitHubNotifierApp` observes `TokenManager.authState`). An immediate sync runs on sign-in.
+- Opening the app triggers a sync if the last one is older than 5 minutes.
+- Interval "Manual Only" cancels periodic work entirely.
+
+---
+
 ## Error Handling & Backoff Strategy
 
-Network operations employ exponential backoff with jitter to handle intermittent connectivity failures and transient GitHub 502/503 responses:
+`GitHubSyncWorker.resultFor()` maps each sweep outcome to a WorkManager result:
 
-- Initial backoff: 30 seconds.
-- Multiplier: 2.0x per failure.
-- Maximum backoff: 10 minutes.
-- Retry cap: 3 consecutive attempts per sync cycle.
+| Outcome | Worker result |
+|---|---|
+| Success | `success()` |
+| Offline / transient error (5xx, timeout) | `retry()` with WorkManager exponential backoff starting at 30 s, up to 3 attempts, then `failure()` until the next period |
+| 401 Unauthorized (token revoked) | Token is cleared, auth state set to error, `failure()` (never retried) |

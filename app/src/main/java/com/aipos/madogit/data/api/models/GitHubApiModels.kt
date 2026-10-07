@@ -94,7 +94,8 @@ data class GitHubPullRequestDto(
     @Json(name = "updated_at") val updatedAt: String,
     val user: UserSummaryDto,
     @Json(name = "requested_reviewers") val requestedReviewers: List<UserSummaryDto>? = emptyList(),
-    val draft: Boolean = false
+    val draft: Boolean = false,
+    @Json(name = "merged_at") val mergedAt: String? = null
 )
 
 @JsonClass(generateAdapter = true)

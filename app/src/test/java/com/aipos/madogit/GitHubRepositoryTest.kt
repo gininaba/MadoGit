@@ -27,6 +27,8 @@ class GitHubRepositoryTest {
     private lateinit var repository: GitHubRepository
     private lateinit var tokenManager: TokenManager
     private lateinit var prefsRepo: PreferencesRepository
+    private lateinit var fakeApi: FakeGitHubApiService
+    private lateinit var dispatcher: RecordingDispatcher
 
     @Before
     fun setUp() {
@@ -36,7 +38,9 @@ class GitHubRepositoryTest {
             .build()
         tokenManager = TokenManager(context)
         prefsRepo = PreferencesRepository(context)
-        repository = GitHubRepository(db, tokenManager, prefsRepo)
+        fakeApi = FakeGitHubApiService()
+        dispatcher = RecordingDispatcher()
+        repository = GitHubRepository(db, tokenManager, prefsRepo, dispatcher, fakeApi)
     }
 
     @After

@@ -32,7 +32,8 @@ interface GitHubApiService {
     suspend fun getUserRepos(
         @Query("per_page") perPage: Int = 100,
         @Query("sort") sort: String = "updated",
-        @Query("type") type: String = "all"
+        @Query("type") type: String = "all",
+        @Query("page") page: Int = 1
     ): List<GitHubRepoDto>
 
     @GET("notifications")
@@ -70,7 +71,9 @@ interface GitHubApiService {
         @Path("owner") owner: String,
         @Path("repo") repo: String,
         @Query("state") state: String = "all",
-        @Query("per_page") perPage: Int = 20
+        @Query("per_page") perPage: Int = 20,
+        @Query("sort") sort: String = "updated",
+        @Query("direction") direction: String = "desc"
     ): List<GitHubPullRequestDto>
 
     @GET("repos/{owner}/{repo}/issues")

@@ -28,11 +28,15 @@ import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -42,6 +46,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aipos.madogit.data.auth.AuthState
+import com.aipos.madogit.data.repository.SyncStatus
 import com.aipos.madogit.ui.MainViewModel
 import com.aipos.madogit.ui.assistant.AssistantScreen
 import com.aipos.madogit.ui.auth.AuthScreen
@@ -64,11 +69,35 @@ fun AppNavigation(
 
     var currentDestination by rememberSaveable { mutableStateOf(NavDestination.DASHBOARD) }
 
-    // If first launch, show onboarding
-    if (isFirstLaunch && authState !is AuthState.Authenticated) {
+    // Onboarding is pinned once started so that signing in on step 1 advances to the completion step
+    // instead of immediately swapping the whole flow out for the dashboard.
+    var onboardingInProgress by rememberSaveable {
+        mutableStateOf(isFirstLaunch && authState !is AuthState.Authenticated)
+    }
+
+    // Users who were already signed in (e.g. upgraded installs) never need onboarding again.
+    LaunchedEffect(isFirstLaunch, authState, onboardingInProgress) {
+        if (isFirstLaunch && authState is AuthState.Authenticated && !onboardingInProgress) {
+            viewModel.completeFirstLaunch()
+        }
+    }
+
+    // Navigation requested from outside the UI (e.g. "View in App" on a system notification).
+    val pendingNavigation by viewModel.pendingNavigation.collectAsState()
+    val isSignedIn = authState is AuthState.Authenticated
+    LaunchedEffect(pendingNavigation, isSignedIn, onboardingInProgress) {
+        val target = pendingNavigation
+        if (target != null && isSignedIn && !onboardingInProgress) {
+            currentDestination = target
+            viewModel.consumePendingNavigation()
+        }
+    }
+
+    if (onboardingInProgress) {
         OnboardingScreen(
             viewModel = viewModel,
             onComplete = {
+                onboardingInProgress = false
                 currentDestination = NavDestination.DASHBOARD
             },
             modifier = modifier
@@ -88,12 +117,27 @@ fun AppNavigation(
         return
     }
 
+    // App-wide transient messages: repository refresh failures and reduced-polling notices.
+    val snackbarHostState = remember { SnackbarHostState() }
+    val userMessage by viewModel.userMessage.collectAsState()
+    val syncStatus by viewModel.syncStatus.collectAsState()
+    LaunchedEffect(userMessage) {
+        userMessage?.let {
+            viewModel.consumeUserMessage()
+            snackbarHostState.showSnackbar(it)
+        }
+    }
+    LaunchedEffect(syncStatus) {
+        (syncStatus as? SyncStatus.Success)?.notice?.let { snackbarHostState.showSnackbar(it) }
+    }
+
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val isExpanded = maxWidth >= 600.dp
 
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             containerColor = MaterialTheme.colorScheme.background,
+            snackbarHost = { SnackbarHost(snackbarHostState) },
             bottomBar = {
                 if (!isExpanded) {
                     NavigationBar(
@@ -118,39 +162,7 @@ fun AppNavigation(
                                     )
                                 },
                                 icon = {
-                                    when {
-                                        destination == NavDestination.NOTIFICATIONS && unreadCount > 0 -> {
-                                            BadgedBox(
-                                                badge = {
-                                                    Badge(
-                                                        containerColor = MaterialTheme.colorScheme.primary,
-                                                        contentColor = MaterialTheme.colorScheme.onPrimary
-                                                    ) {
-                                                        Text("$unreadCount", fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                                                    }
-                                                }
-                                            ) {
-                                                Icon(destination.icon, contentDescription = destination.title)
-                                            }
-                                        }
-                                        destination == NavDestination.ASSISTANT && assistantSummary.totalActionableItems > 0 -> {
-                                            BadgedBox(
-                                                badge = {
-                                                    Badge(
-                                                        containerColor = MaterialTheme.colorScheme.tertiary,
-                                                        contentColor = MaterialTheme.colorScheme.onTertiary
-                                                    ) {
-                                                        Text("${assistantSummary.totalActionableItems}", fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                                                    }
-                                                }
-                                            ) {
-                                                Icon(destination.icon, contentDescription = destination.title)
-                                            }
-                                        }
-                                        else -> {
-                                            Icon(destination.icon, contentDescription = destination.title)
-                                        }
-                                    }
+                                    DestinationIcon(destination, unreadCount, assistantSummary.totalActionableItems)
                                 },
                                 colors = NavigationBarItemDefaults.colors(
                                     selectedIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -194,7 +206,7 @@ fun AppNavigation(
                                         fontWeight = if (isSelected) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Medium
                                     )
                                 },
-                                icon = { Icon(destination.icon, contentDescription = destination.title) },
+                                icon = { DestinationIcon(destination, unreadCount, assistantSummary.totalActionableItems) },
                                 colors = NavigationRailItemDefaults.colors(
                                     selectedIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
                                     selectedTextColor = MaterialTheme.colorScheme.onSurface,
@@ -228,6 +240,36 @@ fun AppNavigation(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun DestinationIcon(destination: NavDestination, unreadCount: Int, actionableCount: Int) {
+    val badgeCount = when (destination) {
+        NavDestination.NOTIFICATIONS -> unreadCount
+        NavDestination.ASSISTANT -> actionableCount
+        else -> 0
+    }
+    if (badgeCount <= 0) {
+        Icon(destination.icon, contentDescription = destination.title)
+        return
+    }
+    val isAssistant = destination == NavDestination.ASSISTANT
+    BadgedBox(
+        badge = {
+            Badge(
+                containerColor = if (isAssistant) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
+                contentColor = if (isAssistant) MaterialTheme.colorScheme.onTertiary else MaterialTheme.colorScheme.onPrimary
+            ) {
+                Text(
+                    text = if (badgeCount > 99) "99+" else "$badgeCount",
+                    fontSize = 10.sp,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                )
+            }
+        }
+    ) {
+        Icon(destination.icon, contentDescription = "${destination.title}, $badgeCount new")
     }
 }
 

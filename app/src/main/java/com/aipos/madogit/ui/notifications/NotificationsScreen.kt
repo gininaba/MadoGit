@@ -85,9 +85,9 @@ import com.aipos.madogit.ui.components.MadoSwipeToDismissItem
 import com.aipos.madogit.ui.components.StatusBadge
 import com.aipos.madogit.ui.components.SyncButton
 import com.aipos.madogit.ui.components.formatRelativeTime
+import com.aipos.madogit.ui.components.notificationDayBucket
 import com.aipos.madogit.ui.components.openExternalUrl
 import kotlinx.coroutines.launch
-import java.util.Calendar
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -224,7 +224,7 @@ fun NotificationsScreen(
 
                 SyncButton(
                     isSyncing = syncStatus is com.aipos.madogit.data.repository.SyncStatus.Syncing,
-                    onSyncClick = { viewModel.triggerSync(context) }
+                    onSyncClick = { viewModel.triggerSync() }
                 )
             }
 
@@ -383,31 +383,14 @@ fun NotificationsScreen(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
             val groupedNotifications = remember(notifications) {
-                val now = Calendar.getInstance()
-                val nowYear = now.get(Calendar.YEAR)
-                val nowDayOfYear = now.get(Calendar.DAY_OF_YEAR)
-                val nowTime = now.timeInMillis
-                val oneDayMillis = 24L * 60 * 60 * 1000
-
-                notifications.groupBy { item ->
-                    val itemCal = Calendar.getInstance().apply { timeInMillis = item.timestamp }
-                    val isSameDay = nowYear == itemCal.get(Calendar.YEAR) &&
-                            nowDayOfYear == itemCal.get(Calendar.DAY_OF_YEAR)
-                    val diffMillis = (nowTime - item.timestamp).coerceAtLeast(0L)
-                    val diffDays = (diffMillis / oneDayMillis).toInt()
-                    when {
-                        isSameDay -> "Today"
-                        diffDays <= 1 -> "Yesterday"
-                        diffDays < 7 -> "This Week"
-                        else -> "Earlier"
-                    }
-                }
+                val now = System.currentTimeMillis()
+                notifications.groupBy { item -> notificationDayBucket(item.timestamp, now) }
             }
 
             // Notifications List / Empty State with Pull to Refresh
             MadoPullToRefreshBox(
                 isRefreshing = syncStatus is com.aipos.madogit.data.repository.SyncStatus.Syncing,
-                onRefresh = { viewModel.triggerSync(context) },
+                onRefresh = { viewModel.triggerSync() },
                 modifier = Modifier.fillMaxSize()
             ) {
                 if (notifications.isEmpty()) {
@@ -422,7 +405,7 @@ fun NotificationsScreen(
                                 viewModel.setNotificationSearchQuery("")
                                 viewModel.setUnreadOnlyFilter(false)
                             } else {
-                                viewModel.triggerSync(context)
+                                viewModel.triggerSync()
                             }
                         }
                     )

@@ -121,9 +121,11 @@ object NotificationHelper {
             }
             else -> {
                 if (!prefs.activityMaster) return false
-                when (item.eventType) {
-                    "COMMIT", "PUSH" -> prefs.activityCommits
-                    "COMMENT" -> prefs.activityComments
+                when {
+                    item.eventType == "COMMENT" -> prefs.activityComments
+                    // Thread eventTypes come from GitHub's `reason`, so commit threads are recognised by URL.
+                    item.eventType == "COMMIT" || item.eventType == "PUSH" ||
+                        item.targetUrl.contains("/commit/") -> prefs.activityCommits
                     else -> true
                 }
             }
@@ -180,7 +182,7 @@ object NotificationHelper {
         // Main app launch intent as alternative action
         val appIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra("notification_id", notification.id)
+            putExtra(MainActivity.EXTRA_NOTIFICATION_ID, notification.id)
         }
         val appPendingIntent = PendingIntent.getActivity(
             context,
@@ -243,6 +245,23 @@ object NotificationHelper {
         } catch (_: SecurityException) {
             // Handled safely if permission is revoked mid-flight
         }
+    }
+
+    fun cancelNotification(context: Context, notificationId: String) {
+        val manager = NotificationManagerCompat.from(context)
+        manager.cancel(notificationId.hashCode())
+        // Drop the group summary once no grouped child remains, otherwise an empty summary lingers.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val systemManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val hasGroupedChildren = systemManager.activeNotifications.any {
+                it.id != GROUP_SUMMARY_NOTIFICATION_ID && it.notification.group == GROUP_GITHUB_NOTIFICATIONS
+            }
+            if (!hasGroupedChildren) manager.cancel(GROUP_SUMMARY_NOTIFICATION_ID)
+        }
+    }
+
+    fun cancelAll(context: Context) {
+        NotificationManagerCompat.from(context).cancelAll()
     }
 }
 

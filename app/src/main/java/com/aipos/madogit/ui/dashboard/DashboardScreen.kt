@@ -88,14 +88,15 @@ fun DashboardScreen(
     val unreadCount by viewModel.unreadCount.collectAsState()
     val monitoredCount by viewModel.monitoredCount.collectAsState()
     val assistantSummary by viewModel.assistantSummary.collectAsState()
-    val allNotifications by viewModel.filteredNotifications.collectAsState()
+    // Unfiltered: the Notifications screen filters must not hide activity from the dashboard
+    val recentNotifications by viewModel.recentNotifications.collectAsState()
     val rateLimitInfo by viewModel.rateLimitInfo.collectAsState()
 
     val isSyncing = syncStatus is SyncStatus.Syncing
 
     MadoPullToRefreshBox(
         isRefreshing = isSyncing,
-        onRefresh = { viewModel.triggerSync(context) },
+        onRefresh = { viewModel.triggerSync() },
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
@@ -103,7 +104,7 @@ fun DashboardScreen(
         Column(modifier = Modifier.fillMaxSize()) {
             OfflineBanner(
                 isOffline = isOffline,
-                onRetry = { viewModel.triggerSync(context) }
+                onRetry = { viewModel.triggerSync() }
             )
 
             LazyColumn(
@@ -117,7 +118,7 @@ fun DashboardScreen(
                         authState = authState,
                         monitoredCount = monitoredCount,
                         isSyncing = isSyncing,
-                        onSyncClick = { viewModel.triggerSync(context) },
+                        onSyncClick = { viewModel.triggerSync() },
                         rateLimitInfo = rateLimitInfo,
                         isOffline = isOffline,
                         onManageReposClick = onNavigateToRepositories,
@@ -173,18 +174,18 @@ fun DashboardScreen(
                     }
                 }
 
-                if (allNotifications.isEmpty()) {
+                if (recentNotifications.isEmpty()) {
                     item {
                         EmptyStateView(
                             icon = Icons.Default.CheckCircle,
                             title = "You're all caught up!",
                             description = "No new events or notifications found on your monitored repositories.",
                             actionButtonLabel = "Sync Now",
-                            onActionClick = { viewModel.triggerSync(context) }
+                            onActionClick = { viewModel.triggerSync() }
                         )
                     }
                 } else {
-                    items(allNotifications.take(10), key = { it.id }) { notification ->
+                    items(recentNotifications, key = { it.id }) { notification ->
                         TimelineEventCard(
                             notification = notification,
                             onCardClick = {

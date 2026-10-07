@@ -37,12 +37,17 @@ class TokenManager(context: Context) {
         private const val DEFAULT_REDIRECT_URI = "ghnotifier://oauth/callback"
     }
 
+    /** Decrypted token kept in memory; avoids a Keystore round-trip on every HTTP request. */
+    @Volatile
+    private var cachedToken: String? = null
+
     private val _authState = MutableStateFlow<AuthState>(loadInitialAuthState())
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
     private fun loadInitialAuthState(): AuthState {
         val encryptedToken = prefs.getString(KEY_AUTH_TOKEN, null)
         val token = if (!encryptedToken.isNullOrBlank()) CryptoManager.decrypt(encryptedToken) else null
+        cachedToken = token?.ifBlank { null }
         val username = prefs.getString(KEY_USERNAME, null)
         val avatarUrl = prefs.getString(KEY_AVATAR_URL, null)
         val displayName = prefs.getString(KEY_DISPLAY_NAME, null)
@@ -60,9 +65,11 @@ class TokenManager(context: Context) {
     }
 
     fun getAccessToken(): String? {
+        cachedToken?.let { return it }
         val rawOrEncrypted = prefs.getString(KEY_AUTH_TOKEN, null) ?: return null
-        val decrypted = CryptoManager.decrypt(rawOrEncrypted)
-        return decrypted.ifBlank { null }
+        val decrypted = CryptoManager.decrypt(rawOrEncrypted).ifBlank { null }
+        cachedToken = decrypted
+        return decrypted
     }
 
     fun getOAuthClientId(): String = prefs.getString(KEY_OAUTH_CLIENT_ID, "") ?: ""
@@ -108,6 +115,7 @@ class TokenManager(context: Context) {
             putString(KEY_AVATAR_URL, user.avatarUrl)
             putString(KEY_DISPLAY_NAME, user.name ?: user.login)
         }
+        cachedToken = trimmedToken
 
         _authState.value = AuthState.Authenticated(
             token = trimmedToken,
@@ -141,6 +149,7 @@ class TokenManager(context: Context) {
             remove(KEY_DISPLAY_NAME)
             remove(KEY_OAUTH_STATE)
         }
+        cachedToken = null
 
         _authState.value = AuthState.Unauthenticated
     }

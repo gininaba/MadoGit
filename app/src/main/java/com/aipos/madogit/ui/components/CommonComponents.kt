@@ -160,6 +160,29 @@ fun StatusBadge(
     }
 }
 
+/**
+ * Buckets a timestamp by local calendar day ("Today", "Yesterday", "This Week", "Earlier").
+ * Uses calendar boundaries rather than 24h windows so that, e.g., 23:00 two days ago is never "Yesterday".
+ */
+fun notificationDayBucket(timestamp: Long, now: Long = System.currentTimeMillis()): String {
+    val startOfToday = java.util.Calendar.getInstance().apply {
+        timeInMillis = now
+        set(java.util.Calendar.HOUR_OF_DAY, 0)
+        set(java.util.Calendar.MINUTE, 0)
+        set(java.util.Calendar.SECOND, 0)
+        set(java.util.Calendar.MILLISECOND, 0)
+    }
+    fun daysAgo(days: Int): Long =
+        (startOfToday.clone() as java.util.Calendar).apply { add(java.util.Calendar.DAY_OF_YEAR, -days) }.timeInMillis
+
+    return when {
+        timestamp >= startOfToday.timeInMillis -> "Today"
+        timestamp >= daysAgo(1) -> "Yesterday"
+        timestamp >= daysAgo(6) -> "This Week"
+        else -> "Earlier"
+    }
+}
+
 fun formatRelativeTime(timestamp: Long): String {
     val now = System.currentTimeMillis()
     val diff = (now - timestamp).coerceAtLeast(0)
@@ -172,8 +195,8 @@ fun formatRelativeTime(timestamp: Long): String {
         seconds < 60 -> "Just now"
         minutes < 60 -> "${minutes}m ago"
         hours < 24 -> "${hours}h ago"
-        days == 1L -> "Yesterday"
-        days < 7 -> "${days}d ago"
+        notificationDayBucket(timestamp, now) == "Yesterday" -> "Yesterday"
+        days < 7 -> "${days.coerceAtLeast(1)}d ago"
         else -> {
             val date = java.util.Date(timestamp)
             java.text.SimpleDateFormat("MMM d", java.util.Locale.getDefault()).format(date)

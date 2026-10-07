@@ -26,7 +26,9 @@ object ApiClient {
 
     private val baseHttpClient: OkHttpClient by lazy {
         val loggingInterceptor = HttpLoggingInterceptor().apply {
-            level = if (com.aipos.madogit.BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY else HttpLoggingInterceptor.Level.NONE
+            // Never log bodies: the OAuth token exchange response contains the access token.
+            level = if (com.aipos.madogit.BuildConfig.DEBUG) HttpLoggingInterceptor.Level.HEADERS else HttpLoggingInterceptor.Level.NONE
+            redactHeader("Authorization")
         }
 
         OkHttpClient.Builder()

@@ -80,6 +80,14 @@ class PreferencesRepository(context: Context) {
     private val _rateLimitInfo = MutableStateFlow(loadRateLimitInfo())
     val rateLimitInfo: StateFlow<Pair<Int, Int>> = _rateLimitInfo.asStateFlow() // Pair(remaining, limit)
 
+    /** Epoch millis of the last successful repository list refresh (0 = never). */
+    val lastRepoRefresh: Long
+        get() = prefs.getLong(KEY_LAST_REPO_REFRESH, 0L)
+
+    /** Login of the account whose data is currently cached in the local database. */
+    val cachedAccountLogin: String?
+        get() = prefs.getString(KEY_CACHED_ACCOUNT, null)
+
     private fun loadNotificationPreferences(): NotificationPreferences {
         return NotificationPreferences(
             prMaster = prefs.getBoolean("pref_pr_master", true),
@@ -204,8 +212,30 @@ class PreferencesRepository(context: Context) {
         }
     }
 
+    fun updateLastRepoRefresh(timestamp: Long = System.currentTimeMillis()) {
+        prefs.edit { putLong(KEY_LAST_REPO_REFRESH, timestamp) }
+    }
+
+    fun setCachedAccountLogin(login: String?) {
+        prefs.edit {
+            if (login == null) remove(KEY_CACHED_ACCOUNT) else putString(KEY_CACHED_ACCOUNT, login)
+        }
+    }
+
+    /** Resets per-account sync bookkeeping (used when signing out). */
+    fun resetSyncState() {
+        _lastSyncTimestamp.value = 0L
+        prefs.edit {
+            putLong(KEY_LAST_SYNC_TIME, 0L)
+            putLong(KEY_LAST_REPO_REFRESH, 0L)
+            remove(KEY_CACHED_ACCOUNT)
+        }
+    }
+
     companion object {
         private const val KEY_FIRST_LAUNCH = "first_launch_done"
         private const val KEY_LAST_SYNC_TIME = "last_sync_timestamp"
+        private const val KEY_LAST_REPO_REFRESH = "last_repo_refresh"
+        private const val KEY_CACHED_ACCOUNT = "cached_account_login"
     }
 }

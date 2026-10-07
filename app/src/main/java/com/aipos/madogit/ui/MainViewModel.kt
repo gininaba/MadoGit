@@ -15,12 +15,14 @@ import com.aipos.madogit.data.repository.PreferencesRepository
 import com.aipos.madogit.data.repository.SyncPreferences
 import com.aipos.madogit.data.repository.SyncStatus
 import com.aipos.madogit.data.repository.ThemeMode
+import com.aipos.madogit.ui.navigation.NavDestination
 import com.aipos.madogit.worker.WorkManagerScheduler
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -83,9 +85,26 @@ class MainViewModel(
             result
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    /** Latest activity regardless of the Notifications screen filters (used by the dashboard). */
+    val recentNotifications: StateFlow<List<GitHubNotificationEntity>> =
+        repository.allNotifications
+            .map { it.take(RECENT_ACTIVITY_LIMIT) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     // Repositories Search & Filter State
     private val _repoSearchQuery = MutableStateFlow("")
     val repoSearchQuery: StateFlow<String> = _repoSearchQuery.asStateFlow()
+
+    private val _isRefreshingRepos = MutableStateFlow(false)
+    val isRefreshingRepos: StateFlow<Boolean> = _isRefreshingRepos.asStateFlow()
+
+    /** One-shot message for a snackbar / toast; call [consumeUserMessage] once shown. */
+    private val _userMessage = MutableStateFlow<String?>(null)
+    val userMessage: StateFlow<String?> = _userMessage.asStateFlow()
+
+    /** Destination requested from outside the UI (e.g. a system notification's "View in App"). */
+    private val _pendingNavigation = MutableStateFlow<NavDestination?>(null)
+    val pendingNavigation: StateFlow<NavDestination?> = _pendingNavigation.asStateFlow()
 
     val filteredRepos: StateFlow<List<MonitoredRepoEntity>> =
         combine(repository.allRepos, _repoSearchQuery) { repos, query ->
@@ -108,6 +127,11 @@ class MainViewModel(
             repository.allNotifications.collect {
                 _assistantSummary.value = repository.getAssistantSummary()
             }
+        }
+        // Opening the app with stale data refreshes it immediately (periodic work may be far off).
+        val dataAge = System.currentTimeMillis() - preferencesRepository.lastSyncTimestamp.value
+        if (authState.value is AuthState.Authenticated && dataAge > STALE_DATA_THRESHOLD_MS) {
+            triggerSync()
         }
     }
 
@@ -148,7 +172,8 @@ class MainViewModel(
 
     fun handleOAuthCode(code: String, state: String? = null, onComplete: (Boolean, String?) -> Unit) {
         viewModelScope.launch {
-            if (state != null && !tokenManager.verifyOAuthState(state)) {
+            // The state parameter is mandatory: a callback without it cannot be tied to a request we made.
+            if (!tokenManager.verifyOAuthState(state)) {
                 val errorMsg = "OAuth state mismatch: Possible cross-site request forgery detected."
                 tokenManager.setAuthError(errorMsg)
                 onComplete(false, errorMsg)
@@ -165,6 +190,10 @@ class MainViewModel(
     }
 
 
+    fun reportOAuthError(message: String) {
+        tokenManager.setAuthError(message)
+    }
+
     fun saveOAuthConfiguration(clientId: String, clientSecret: String, redirectUri: String) {
         tokenManager.saveOAuthConfiguration(clientId, clientSecret, redirectUri)
     }
@@ -173,24 +202,48 @@ class MainViewModel(
     fun getOAuthClientSecret(): String = tokenManager.getOAuthClientSecret()
     fun getRedirectUri(): String = tokenManager.getRedirectUri()
 
-    fun disconnect(context: Context? = null) {
+    fun disconnect() {
+        // Background work is cancelled by GitHubNotifierApp, which observes the session.
         viewModelScope.launch {
             repository.disconnect()
-            context?.let { WorkManagerScheduler.cancelAll(it) }
         }
     }
 
-    fun triggerSync(context: Context) {
+    fun triggerSync() {
         viewModelScope.launch {
-            repository.syncAll(context)
+            repository.syncAll()
             _assistantSummary.value = repository.getAssistantSummary()
         }
     }
 
     fun refreshRepositories() {
+        if (_isRefreshingRepos.value) return
         viewModelScope.launch {
-            repository.refreshRepositories()
+            _isRefreshingRepos.value = true
+            val result = repository.refreshRepositories()
+            _isRefreshingRepos.value = false
+            result.exceptionOrNull()?.let { error ->
+                _userMessage.value = when (error) {
+                    is java.io.IOException -> "Offline: couldn't refresh repositories"
+                    else -> "Couldn't refresh repositories: ${error.message ?: "unknown error"}"
+                }
+            }
         }
+    }
+
+    fun consumeUserMessage() {
+        _userMessage.value = null
+    }
+
+    /** Handles "View in App" from a system notification: mark it read and show the inbox. */
+    fun openNotificationFromSystem(notificationId: String) {
+        markNotificationRead(notificationId)
+        _selectedCategory.value = "ALL"
+        _pendingNavigation.value = NavDestination.NOTIFICATIONS
+    }
+
+    fun consumePendingNavigation() {
+        _pendingNavigation.value = null
     }
 
     fun toggleRepoMonitored(repoId: Long, isMonitored: Boolean) {
@@ -258,9 +311,9 @@ class MainViewModel(
         preferencesRepository.setFirstLaunchCompleted()
     }
 
-    fun sendTestNotification(context: Context) {
+    fun sendTestNotification() {
         viewModelScope.launch {
-            repository.createTestNotification(context)
+            repository.createTestNotification()
             _assistantSummary.value = repository.getAssistantSummary()
         }
     }
@@ -273,6 +326,8 @@ class MainViewModel(
     }
 
     companion object {
+        private const val RECENT_ACTIVITY_LIMIT = 10
+        private const val STALE_DATA_THRESHOLD_MS = 5 * 60 * 1000L
         fun provideFactory(
             repository: GitHubRepository,
             tokenManager: TokenManager,

@@ -36,6 +36,7 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         private var hasShownSplash = false
+        const val EXTRA_NOTIFICATION_ID = "notification_id"
     }
 
     private lateinit var viewModel: MainViewModel
@@ -63,7 +64,11 @@ class MainActivity : ComponentActivity() {
             )
         )[MainViewModel::class.java]
 
-        handleIntent(intent)
+        // Only consume the launch intent on a fresh start; after a configuration change or process
+        // recreation the same intent is redelivered and its one-shot OAuth code is already spent.
+        if (savedInstanceState == null) {
+            handleIntent(intent)
+        }
 
         setContent {
             val themeMode by viewModel.themeMode.collectAsState()
@@ -136,18 +141,36 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
-        val data = intent?.data ?: return
+        if (intent == null) return
+
+        // "View in App" action from a system notification
+        intent.getStringExtra(EXTRA_NOTIFICATION_ID)?.let { notificationId ->
+            intent.removeExtra(EXTRA_NOTIFICATION_ID)
+            viewModel.openNotificationFromSystem(notificationId)
+        }
+
+        val data = intent.data ?: return
         // Check for OAuth redirect: ghnotifier://oauth/callback?code=...&state=...
         if (data.scheme == "ghnotifier" && data.host == "oauth" && data.path == "/callback") {
+            intent.data = null // consume: never exchange the same single-use code twice
             val code = data.getQueryParameter("code")
             val state = data.getQueryParameter("state")
-            if (!code.isNullOrBlank()) {
-                viewModel.handleOAuthCode(code, state) { success, error ->
-                    if (success) {
-                        Toast.makeText(this, "GitHub connected successfully!", Toast.LENGTH_SHORT).show()
-                    } else {
-                        Toast.makeText(this, "OAuth failed: $error", Toast.LENGTH_LONG).show()
+            val error = data.getQueryParameter("error")
+            when {
+                !code.isNullOrBlank() -> {
+                    viewModel.handleOAuthCode(code, state) { success, errorMessage ->
+                        if (success) {
+                            Toast.makeText(this, "GitHub connected successfully!", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(this, "OAuth failed: $errorMessage", Toast.LENGTH_LONG).show()
+                        }
                     }
+                }
+                // e.g. error=access_denied when the user cancels on GitHub's consent page
+                !error.isNullOrBlank() -> {
+                    val description = data.getQueryParameter("error_description") ?: error.replace('_', ' ')
+                    viewModel.reportOAuthError("GitHub authorization was not completed: $description")
+                    Toast.makeText(this, "OAuth cancelled: $description", Toast.LENGTH_LONG).show()
                 }
             }
         }

@@ -1,7 +1,7 @@
 package com.aipos.madogit.data.repository
 
-import android.content.Context
 import android.util.Log
+import androidx.room.withTransaction
 import com.aipos.madogit.data.api.ApiClient
 import com.aipos.madogit.data.api.GitHubApiService
 import com.aipos.madogit.data.api.models.GitHubNotificationDto
@@ -14,12 +14,15 @@ import com.aipos.madogit.data.database.entities.GitHubNotificationEntity
 import com.aipos.madogit.data.database.entities.MonitoredRepoEntity
 import com.aipos.madogit.data.database.entities.ProcessedEventEntity
 import com.aipos.madogit.data.database.entities.SyncLogEntity
-import com.aipos.madogit.notifications.NotificationHelper
+import com.aipos.madogit.notifications.NotificationDispatcher
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import retrofit2.HttpException
 import java.io.IOException
@@ -39,24 +42,40 @@ data class AssistantSummary(
 sealed class SyncStatus {
     data object Idle : SyncStatus()
     data object Syncing : SyncStatus()
-    data class Success(val newItemsCount: Int, val timestamp: Long) : SyncStatus()
+    /** [notice] carries a non-fatal advisory (e.g. reduced polling because of a low API quota). */
+    data class Success(val newItemsCount: Int, val timestamp: Long, val notice: String? = null) : SyncStatus()
     data class Offline(val message: String) : SyncStatus()
-    data class Error(val message: String) : SyncStatus()
+    /** [retryable] is false for failures that will not fix themselves (e.g. revoked credentials). */
+    data class Error(val message: String, val retryable: Boolean = true) : SyncStatus()
 }
+
+/** How aggressively a sync sweep may spend the GitHub REST quota. */
+private enum class QuotaTier { NORMAL, CONSERVATIVE, CRITICAL }
 
 class GitHubRepository(
     private val database: AppDatabase,
     private val tokenManager: TokenManager,
-    private val preferencesRepository: PreferencesRepository
+    private val preferencesRepository: PreferencesRepository,
+    private val notificationDispatcher: NotificationDispatcher,
+    apiServiceOverride: GitHubApiService? = null
 ) {
     private val repoDao = database.repoDao()
     private val notificationDao = database.notificationDao()
     private val processedEventDao = database.processedEventDao()
     private val syncLogDao = database.syncLogDao()
 
-    private var apiService: GitHubApiService = ApiClient.createRetrofit(tokenManager) { remaining, limit ->
-        preferencesRepository.updateRateLimit(remaining, limit)
-    }
+    // The auth interceptor reads the token from TokenManager on every request, so a single
+    // client instance stays valid across sign-in / sign-out and never needs to be rebuilt.
+    private val apiService: GitHubApiService = apiServiceOverride
+        ?: ApiClient.createRetrofit(tokenManager) { remaining, limit ->
+            preferencesRepository.updateRateLimit(remaining, limit)
+        }
+
+    /** Guarantees a single in-flight sync sweep (periodic worker, manual refresh, app start). */
+    private val syncMutex = Mutex()
+
+    /** Serializes repository list refreshes (sign-in, first sweep, pull-to-refresh). */
+    private val repoRefreshMutex = Mutex()
 
     private val _syncStatus = MutableStateFlow<SyncStatus>(SyncStatus.Idle)
     val syncStatus: StateFlow<SyncStatus> = _syncStatus.asStateFlow()
@@ -79,6 +98,10 @@ class GitHubRepository(
         }
     }
 
+    // ---------------------------------------------------------------------------------------------
+    // Authentication
+    // ---------------------------------------------------------------------------------------------
+
     suspend fun connectWithToken(token: String): Result<GitHubUserDto> = withContext(Dispatchers.IO) {
         tokenManager.setAuthLoading()
         try {
@@ -86,10 +109,14 @@ class GitHubRepository(
             val verifyService = ApiClient.createRetrofitWithToken(token)
             val user = verifyService.getCurrentUser()
 
-            tokenManager.saveAuthSuccess(token, user)
-            apiService = ApiClient.createRetrofit(tokenManager) { remaining, limit ->
-                preferencesRepository.updateRateLimit(remaining, limit)
+            // Never show one account's cached (possibly private) data to another account.
+            val previousAccount = preferencesRepository.cachedAccountLogin
+            if (previousAccount != null && !previousAccount.equals(user.login, ignoreCase = true)) {
+                wipeLocalAccountData()
             }
+
+            tokenManager.saveAuthSuccess(token, user)
+            preferencesRepository.setCachedAccountLogin(user.login)
             _isOffline.value = false
 
             // Fetch initial repositories
@@ -97,6 +124,7 @@ class GitHubRepository(
 
             Result.success(user)
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             tokenManager.clearAuth()
             val message = when (e) {
                 is HttpException -> {
@@ -133,15 +161,47 @@ class GitHubRepository(
                 Result.failure(Exception(errorMsg))
             }
         } catch (e: Exception) {
-            val message = e.message ?: "OAuth token exchange failed"
+            if (e is CancellationException) throw e
+            val message = if (e is IOException) {
+                "Network error connecting to GitHub. Check internet connection."
+            } else {
+                e.message ?: "OAuth token exchange failed"
+            }
             tokenManager.setAuthError(message)
             Result.failure(Exception(message))
         }
     }
 
+    /** Signs out and removes every trace of the previous account from the device. */
     suspend fun disconnect() = withContext(Dispatchers.IO) {
+        // Clearing the token first makes any in-flight sweep fail fast; the lock then ensures the
+        // wipe is not interleaved with that sweep's database writes.
         tokenManager.clearAuth()
+        syncMutex.withLock { wipeLocalAccountData() }
     }
+
+    private fun wipeLocalAccountData() {
+        database.clearAllTables()
+        notificationDispatcher.cancelAll()
+        preferencesRepository.resetSyncState()
+        _syncStatus.value = SyncStatus.Idle
+        _isOffline.value = false
+    }
+
+    /**
+     * A 401 means the token was revoked or expired. Drop it so the app does not keep presenting a
+     * signed-in UI (and retrying with dead credentials after every restart), then surface the reason.
+     */
+    private fun handleUnauthorized() {
+        if (tokenManager.authState.value is AuthState.Authenticated) {
+            tokenManager.clearAuth()
+            tokenManager.setAuthError(SESSION_EXPIRED_MESSAGE)
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Local state mutations
+    // ---------------------------------------------------------------------------------------------
 
     suspend fun setRepoMonitored(repoId: Long, isMonitored: Boolean) = withContext(Dispatchers.IO) {
         repoDao.setMonitored(repoId, isMonitored)
@@ -151,59 +211,83 @@ class GitHubRepository(
         repoDao.setAllMonitored(isMonitored)
     }
 
-    private fun convertApiUrlToHtmlUrl(apiUrl: String?): String? {
-        if (apiUrl == null) return null
-        return apiUrl.replace("api.github.com/repos/", "github.com/")
-            .replace("/pulls/", "/pull/")
-    }
-
     suspend fun markNotificationAsRead(id: String) = withContext(Dispatchers.IO) {
         notificationDao.markAsRead(id)
+        notificationDispatcher.cancel(id)
         try {
             // If it's a GitHub notification thread, inform GitHub API
-            if (id.startsWith("gh_thread_")) {
-                val threadId = id.removePrefix("gh_thread_")
+            if (id.startsWith(THREAD_ID_PREFIX)) {
+                val threadId = id.removePrefix(THREAD_ID_PREFIX)
                 val response = apiService.markNotificationAsRead(threadId)
                 if (!response.isSuccessful) {
-                    Log.w("GitHubRepository", "Failed to mark thread $threadId as read on GitHub: ${response.code()} ${response.message()}")
+                    Log.w(TAG, "Failed to mark thread $threadId as read on GitHub: ${response.code()} ${response.message()}")
                 }
             }
         } catch (e: Exception) {
-            Log.w("GitHubRepository", "Exception marking notification as read on GitHub", e)
+            if (e is CancellationException) throw e
+            Log.w(TAG, "Exception marking notification as read on GitHub", e)
         }
     }
 
     suspend fun markAllNotificationsAsRead() = withContext(Dispatchers.IO) {
         notificationDao.markAllAsRead()
+        notificationDispatcher.cancelAll()
         try {
             val response = apiService.markAllNotificationsAsRead()
             if (!response.isSuccessful) {
-                Log.w("GitHubRepository", "Failed to mark all notifications as read on GitHub: ${response.code()} ${response.message()}")
+                Log.w(TAG, "Failed to mark all notifications as read on GitHub: ${response.code()} ${response.message()}")
             }
         } catch (e: Exception) {
-            Log.w("GitHubRepository", "Exception marking all notifications as read on GitHub", e)
+            if (e is CancellationException) throw e
+            Log.w(TAG, "Exception marking all notifications as read on GitHub", e)
         }
     }
 
     suspend fun deleteNotification(id: String) = withContext(Dispatchers.IO) {
         notificationDao.deleteNotification(id)
+        notificationDispatcher.cancel(id)
     }
 
     suspend fun clearAllNotifications() = withContext(Dispatchers.IO) {
         notificationDao.clearAllNotifications()
+        notificationDispatcher.cancelAll()
     }
 
+    // ---------------------------------------------------------------------------------------------
+    // Repository list
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * Reconciles the local repository table with every repository the user can access.
+     *
+     * - Paginates through `/user/repos` (up to [MAX_REPO_PAGES] x [REPO_PAGE_SIZE]).
+     * - Preserves the user's explicit monitor / unmonitor choices and per-repo sync cursors.
+     * - New repositories follow the "monitor all by default" preference.
+     * - Repositories that are no longer accessible are removed.
+     * - Only the very first import auto-monitors a small starter set.
+     */
     suspend fun refreshRepositories(): Result<List<MonitoredRepoEntity>> = withContext(Dispatchers.IO) {
-        try {
-            val remoteRepos = apiService.getUserRepos(perPage = 100, sort = "updated")
+        repoRefreshMutex.withLock { refreshRepositoriesLocked() }
+    }
+
+    /** Refreshes the repository list only when it is empty or older than [REPO_REFRESH_INTERVAL_MS]. */
+    private suspend fun refreshRepositoriesIfStale(): Result<List<MonitoredRepoEntity>>? =
+        repoRefreshMutex.withLock {
+            val isStale = System.currentTimeMillis() - preferencesRepository.lastRepoRefresh > REPO_REFRESH_INTERVAL_MS
+            if (repoDao.getRepoCount() == 0 || isStale) refreshRepositoriesLocked() else null
+        }
+
+    private suspend fun refreshRepositoriesLocked(): Result<List<MonitoredRepoEntity>> {
+        return try {
+            val (remoteRepos, isComplete) = fetchAllUserRepos()
             _isOffline.value = false
 
-            val currentMonitored = repoDao.getMonitoredReposSync().associateBy { it.id }
             val monitorAll = preferencesRepository.syncPrefs.value.monitorAllByDefault
+            val existing = repoDao.getAllReposSync().associateBy { it.id }
+            val isFirstImport = existing.isEmpty()
 
             val repoEntities = remoteRepos.map { dto ->
-                val wasMonitored = currentMonitored[dto.id]?.isMonitored ?: monitorAll
-                val existingLastSynced = currentMonitored[dto.id]?.lastSyncedAt ?: 0L
+                val previous = existing[dto.id]
                 MonitoredRepoEntity(
                     id = dto.id,
                     fullName = dto.fullName,
@@ -215,483 +299,520 @@ class GitHubRepository(
                     forksCount = dto.forksCount,
                     defaultBranch = dto.defaultBranch,
                     htmlUrl = dto.htmlUrl,
-                    isMonitored = wasMonitored,
-                    lastSyncedAt = existingLastSynced,
+                    isMonitored = previous?.isMonitored ?: monitorAll,
+                    lastSyncedAt = previous?.lastSyncedAt ?: 0L,
                     language = dto.language
                 )
             }
 
-            // Save to database
-            repoDao.insertIgnore(repoEntities)
-            repoDao.updateRepos(repoEntities)
+            val remoteIds = repoEntities.mapTo(HashSet()) { it.id }
+            // Only prune when we have seen the complete list; a truncated listing must not delete data.
+            val staleIds = if (isComplete) existing.keys.filterNot { it in remoteIds } else emptyList()
 
-            // If no repos are monitored and user has repos, auto-monitor first 3 for great onboarding
-            val monitoredNow = repoDao.getMonitoredReposSync()
-            if (monitoredNow.isEmpty() && repoEntities.isNotEmpty()) {
-                val initialMonitored = repoEntities.take(3)
-                initialMonitored.forEach { repoDao.setMonitored(it.id, true) }
+            database.withTransaction {
+                repoDao.insertIgnore(repoEntities)
+                repoDao.updateRepos(repoEntities)
+                staleIds.chunked(SQL_IN_CHUNK).forEach { repoDao.deleteByIds(it) }
+
+                // First import only: auto-monitor a starter set for a great onboarding experience.
+                if (isFirstImport && !monitorAll) {
+                    repoEntities.take(STARTER_REPO_COUNT).forEach { repoDao.setMonitored(it.id, true) }
+                }
             }
+            preferencesRepository.updateLastRepoRefresh()
 
-            Result.success(repoEntities)
+            Result.success(repoDao.getAllReposSync())
         } catch (e: Exception) {
-            if (e is kotlinx.coroutines.CancellationException) throw e
-            Log.e("GitHubRepository", "Error refreshing repositories", e)
-            if (e is HttpException && e.code() == 401) {
-                tokenManager.setAuthError("Session expired or token revoked. Please sign in again.")
-            }
+            if (e is CancellationException) throw e
+            Log.e(TAG, "Error refreshing repositories", e)
+            if (e.isUnauthorized()) handleUnauthorized()
             _isOffline.value = (e is IOException)
             Result.failure(e)
         }
     }
 
-    suspend fun syncAll(context: Context): Int = withContext(Dispatchers.IO) {
-        val auth = tokenManager.authState.value
-        if (auth !is AuthState.Authenticated) {
-            _syncStatus.value = SyncStatus.Idle
-            return@withContext 0
+    /** @return the accessible repositories and whether the listing was exhaustive. */
+    private suspend fun fetchAllUserRepos(): Pair<List<GitHubRepoDto>, Boolean> {
+        val all = ArrayList<GitHubRepoDto>()
+        for (page in 1..MAX_REPO_PAGES) {
+            val batch = apiService.getUserRepos(perPage = REPO_PAGE_SIZE, sort = "updated", page = page)
+            all += batch
+            if (batch.size < REPO_PAGE_SIZE) return all.distinctBy { it.id } to true
         }
+        return all.distinctBy { it.id } to false
+    }
 
+    // ---------------------------------------------------------------------------------------------
+    // Sync engine
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * Runs one sync sweep. Concurrent callers do not queue up a second sweep: if one is already in
+     * flight they return immediately and observe its outcome through [syncStatus].
+     *
+     * @return number of new items announced to the user.
+     */
+    suspend fun syncAll(): Int = (runSync() as? SyncStatus.Success)?.newItemsCount ?: 0
+
+    /**
+     * Runs one sync sweep and returns its own outcome ([SyncStatus.Syncing] if another sweep was
+     * already in flight, [SyncStatus.Idle] when signed out).
+     */
+    suspend fun runSync(): SyncStatus = withContext(Dispatchers.IO) {
+        if (tokenManager.authState.value !is AuthState.Authenticated) {
+            _syncStatus.value = SyncStatus.Idle
+            return@withContext SyncStatus.Idle
+        }
+        if (!syncMutex.tryLock()) return@withContext SyncStatus.Syncing
+        try {
+            performSync().also { _syncStatus.value = it }
+        } finally {
+            syncMutex.unlock()
+        }
+    }
+
+    private suspend fun performSync(): SyncStatus {
         _syncStatus.value = SyncStatus.Syncing
-        val startTime = System.currentTimeMillis()
         var newNotificationsCount = 0
 
         try {
-            // 1. Check Rate Limit
+            // 1. Check Rate Limit (the /rate_limit endpoint does not consume quota)
+            var remainingQuota = Int.MAX_VALUE
             try {
                 val rateLimit = apiService.getRateLimit()
-                preferencesRepository.updateRateLimit(
-                    rateLimit.resources.core.remaining,
-                    rateLimit.resources.core.limit
-                )
+                remainingQuota = rateLimit.resources.core.remaining
+                preferencesRepository.updateRateLimit(remainingQuota, rateLimit.resources.core.limit)
                 _isOffline.value = false
             } catch (e: Exception) {
-                if (e is HttpException && e.code() == 401) {
-                    throw e
-                }
+                if (e is CancellationException || e.isUnauthorized()) throw e
                 if (e is IOException) {
                     _isOffline.value = true
-                    _syncStatus.value = SyncStatus.Offline("Offline: showing saved data")
-                    return@withContext 0
+                    return SyncStatus.Offline("Offline: showing saved data")
                 }
+                Log.w(TAG, "Rate limit check failed; continuing with default budget", e)
             }
 
-            // 2. Fetch User Profile
-            try {
-                val user = apiService.getCurrentUser()
-                tokenManager.updateCachedUser(user)
-            } catch (e: Exception) {
-                if (e is HttpException && e.code() == 401) throw e
+            val tier = when {
+                remainingQuota < RATE_CRITICAL_THRESHOLD -> QuotaTier.CRITICAL
+                remainingQuota < RATE_CONSERVATIVE_THRESHOLD -> QuotaTier.CONSERVATIVE
+                else -> QuotaTier.NORMAL
             }
 
-            // 3. Ensure repositories are up-to-date
-            var monitoredReposList = repoDao.getMonitoredReposSync()
-            if (monitoredReposList.isEmpty()) {
-                refreshRepositories()
-                monitoredReposList = repoDao.getMonitoredReposSync()
-            }
-
+            // Until one sweep has completed, everything we see is pre-existing history: import it
+            // silently instead of flooding the shade with dozens of stale alerts.
+            val isBaseline = syncLogDao.getSuccessfulSyncCount() == 0
             val notificationPreferences = preferencesRepository.notificationPrefs.value
 
-            // Purge any duplicate notifications in the local database (e.g. from ID format changes)
-            try {
-                val allNotifs = notificationDao.getAllNotificationsSync()
-                val seenKeys = mutableMapOf<String, GitHubNotificationEntity>()
-                for (n in allNotifs) {
-                    val key = if (n.targetUrl.isNotBlank()) n.targetUrl else "${n.repoFullName}::${n.title}"
-                    val existingSeen = seenKeys[key]
-                    if (existingSeen != null) {
-                        // If one is read and the other is unread, keep the read one and delete the unread duplicate
-                        if (existingSeen.isRead && !n.isRead) {
-                            notificationDao.deleteNotification(n.id)
-                        } else if (!existingSeen.isRead && n.isRead) {
-                            notificationDao.deleteNotification(existingSeen.id)
-                            seenKeys[key] = n
-                        } else {
-                            notificationDao.deleteNotification(n.id)
-                        }
-                    } else {
-                        seenKeys[key] = n
-                    }
+            if (tier != QuotaTier.CRITICAL) {
+                // 2. Fetch User Profile
+                try {
+                    tokenManager.updateCachedUser(apiService.getCurrentUser())
+                } catch (e: Exception) {
+                    if (e is CancellationException || e.isUnauthorized()) throw e
+                    Log.w(TAG, "Profile refresh failed", e)
                 }
-            } catch (_: Exception) {}
+
+                // 3. Keep the repository list fresh (cheap path: only when empty or stale)
+                refreshRepositoriesIfStale()?.exceptionOrNull()?.let { if (it.isUnauthorized()) throw it }
+            }
+
+            purgeDuplicateNotifications()
 
             // 4. Check Official GitHub Notifications API (/notifications)
-            try {
-                val remoteNotifications = apiService.getNotifications(all = true, participating = false)
-                for (item in remoteNotifications) {
-                    val notifId = "gh_thread_${item.id}"
-                    val existing = notificationDao.getNotificationById(notifId)
-
-                    if (existing != null) {
-                        // Reconcile read status:
-                        // If user marked read locally (existing.isRead), keep it read.
-                        // If read on GitHub (!item.unread), update local state to read.
-                        val shouldBeRead = existing.isRead || !item.unread
-                        if (shouldBeRead != existing.isRead && shouldBeRead) {
-                            notificationDao.markAsRead(notifId)
-                        }
-                        continue
-                    }
-
-                    if (!processedEventDao.isEventProcessed(notifId)) {
-                        processedEventDao.insertProcessedEvent(
-                            ProcessedEventEntity(
-                                eventId = notifId,
-                                eventType = item.subject.type,
-                                repoFullName = item.repository.fullName
-                            )
-                        )
-
-                        val category = when (item.subject.type.uppercase()) {
-                            "PULLREQUEST" -> "PR"
-                            "ISSUE" -> "ISSUE"
-                            "CHECKSUITE", "WORKFLOWRUN" -> "WORKFLOW"
-                            "RELEASE" -> "RELEASE"
-                            else -> "ACTIVITY"
-                        }
-
-                        val normalizedEventType = when (item.reason.lowercase()) {
-                            "assign" -> "ASSIGNED"
-                            "mention", "team_mention" -> "MENTION"
-                            "comment" -> "COMMENT"
-                            "review_requested" -> "REVIEW_REQUESTED"
-                            else -> item.reason.uppercase()
-                        }
-
-                        val notifActionState = when {
-                            item.reason.lowercase().contains("review") -> "REVIEW_REQUESTED"
-                            item.reason.lowercase() == "assign" -> "ASSIGNED"
-                            else -> "UNREAD"
-                        }
-
-                        val isRead = !item.unread
-                        val entity = GitHubNotificationEntity(
-                            id = notifId,
-                            eventType = normalizedEventType,
-                            category = category,
-                            repoFullName = item.repository.fullName,
-                            title = item.subject.title,
-                            body = "Reason: ${item.reason.replace('_', ' ')} (${item.subject.type})",
-                            author = item.repository.owner.login,
-                            avatarUrl = item.repository.owner.avatarUrl,
-                            targetUrl = convertApiUrlToHtmlUrl(item.subject.url) ?: item.repository.htmlUrl ?: "https://github.com/${item.repository.fullName}",
-                            timestamp = parseIsoDate(item.updatedAt),
-                            isRead = isRead,
-                            isNotified = true,
-                            actionState = notifActionState
-                        )
-
-                        notificationDao.insert(entity)
-                        if (!isRead) {
-                            newNotificationsCount++
-                            NotificationHelper.postNotification(context, entity, notificationPreferences)
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                if (e is HttpException && e.code() == 401) throw e
-                Log.w("GitHubRepository", "Error fetching /notifications", e)
-            }
+            newNotificationsCount += syncNotificationThreads(notificationPreferences, isBaseline)
 
             // 5. Monitor Specific Selected Repositories for Events & Workflows
-            // Use round-robin ordering (least-recently synced first) to prevent starvation
-            val reposToPoll = repoDao.getMonitoredReposToSync(5)
-            for (repo in reposToPoll) {
-                val parts = repo.fullName.split("/")
-                if (parts.size != 2) continue
-                val owner = parts[0]
-                val repoName = parts[1]
-                val isFirstSyncForRepo = repo.lastSyncedAt == 0L
-
-                // Fetch workflow runs (CI/CD)
-                if (notificationPreferences.actionMaster) {
-                    try {
-                        val runsResponse = apiService.getWorkflowRuns(owner, repoName, perPage = 5)
-                        for (run in runsResponse.workflowRuns) {
-                            val conclusion = run.conclusion?.uppercase() ?: run.status?.uppercase() ?: "PENDING"
-                            val isFailed = conclusion in listOf("FAILURE", "FAILED", "TIMED_OUT")
-                            val isSuccess = conclusion == "SUCCESS"
-
-                            // Only process if preferences allow it (actionSucceeded is false by default)
-                            val shouldProcess = (isFailed && notificationPreferences.actionFailed) ||
-                                                (isSuccess && notificationPreferences.actionSucceeded)
-                            if (!shouldProcess) {
-                                continue
-                            }
-
-                            val runEventId = "gh_run_${run.id}"
-                            val existing = notificationDao.getNotificationById(runEventId)
-                                ?: (if (!run.htmlUrl.isNullOrBlank()) notificationDao.getNotificationByTargetUrl(run.htmlUrl) else null)
-                                ?: notificationDao.getNotificationByRepoAndTitle(repo.fullName, "${run.name ?: "Build"} #${run.runNumber}: $conclusion")
-
-                            if (existing != null) {
-                                continue
-                            }
-
-                            if (!processedEventDao.isEventProcessed(runEventId)) {
-                                processedEventDao.insertProcessedEvent(
-                                    ProcessedEventEntity(
-                                        eventId = runEventId,
-                                        eventType = "WORKFLOW_RUN",
-                                        repoFullName = repo.fullName
-                                    )
-                                )
-
-                                // On first sync of a repo, past completed runs are marked as read
-                                val isRead = isFirstSyncForRepo
-
-                                val notif = GitHubNotificationEntity(
-                                    id = runEventId,
-                                    eventType = if (isFailed) "WORKFLOW_FAILED" else "WORKFLOW_SUCCESS",
-                                    category = "WORKFLOW",
-                                    repoFullName = repo.fullName,
-                                    title = "${run.name ?: "Build"} #${run.runNumber}: $conclusion",
-                                    body = "Branch: ${run.headBranch ?: repo.defaultBranch} • Event: ${run.event ?: "push"}",
-                                    author = owner,
-                                    avatarUrl = null,
-                                    targetUrl = run.htmlUrl,
-                                    timestamp = parseIsoDate(run.updatedAt),
-                                    isRead = isRead,
-                                    isNotified = true,
-                                    actionState = conclusion
-                                )
-
-                                notificationDao.insert(notif)
-                                if (!isRead) {
-                                    newNotificationsCount++
-                                    NotificationHelper.postNotification(context, notif, notificationPreferences)
-                                }
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Log.d("GitHubRepository", "Workflow runs not available or permission denied for $owner/$repoName")
-                    }
+            if (tier != QuotaTier.CRITICAL) {
+                // Use round-robin ordering (least-recently synced first) to prevent starvation
+                for (repo in repoDao.getMonitoredReposToSync(REPOS_PER_SWEEP)) {
+                    newNotificationsCount += syncRepository(repo, notificationPreferences, tier, isBaseline)
+                    // Update repository last synced timestamp
+                    repoDao.updateLastSynced(repo.id, System.currentTimeMillis())
                 }
-
-                // Fetch pull requests
-                if (notificationPreferences.prMaster) {
-                    try {
-                        val prs = apiService.getPullRequests(owner, repoName, state = "open", perPage = 5)
-                        for (pr in prs) {
-                            val prEventId = "gh_pr_${pr.id}"
-                            val existing = notificationDao.getNotificationById(prEventId)
-                                ?: (if (!pr.htmlUrl.isNullOrBlank()) notificationDao.getNotificationByTargetUrl(pr.htmlUrl) else null)
-                                ?: notificationDao.getNotificationByRepoAndTitle(repo.fullName, "PR #${pr.number}: ${pr.title}")
-
-                            if (existing != null) {
-                                continue
-                            }
-
-                            if (!processedEventDao.isEventProcessed(prEventId)) {
-                                processedEventDao.insertProcessedEvent(
-                                    ProcessedEventEntity(
-                                        eventId = prEventId,
-                                        eventType = "PULL_REQUEST",
-                                        repoFullName = repo.fullName
-                                    )
-                                )
-
-                                val currentUsername = (tokenManager.authState.value as? AuthState.Authenticated)?.username
-                                val isReviewRequested = !currentUsername.isNullOrBlank() &&
-                                        pr.requestedReviewers?.any { it.login.equals(currentUsername, ignoreCase = true) } == true
-
-                                val prEventType = if (isReviewRequested) "REVIEW_REQUESTED" else "PR_OPENED"
-                                val prActionState = if (isReviewRequested) "REVIEW_REQUESTED" else "OPEN"
-
-                                // On first sync of a repo, past existing PRs are marked as read
-                                val isRead = isFirstSyncForRepo
-
-                                val notif = GitHubNotificationEntity(
-                                    id = prEventId,
-                                    eventType = prEventType,
-                                    category = "PR",
-                                    repoFullName = repo.fullName,
-                                    title = "PR #${pr.number}: ${pr.title}",
-                                    body = if (isReviewRequested) "Review requested from you by @${pr.user.login}"
-                                           else "Opened by @${pr.user.login} • ${if (pr.draft) "Draft" else "Ready for review"}",
-                                    author = pr.user.login,
-                                    avatarUrl = pr.user.avatarUrl,
-                                    targetUrl = pr.htmlUrl,
-                                    timestamp = parseIsoDate(pr.updatedAt),
-                                    isRead = isRead,
-                                    isNotified = true,
-                                    actionState = prActionState
-                                )
-
-                                notificationDao.insert(notif)
-                                if (!isRead) {
-                                    newNotificationsCount++
-                                    NotificationHelper.postNotification(context, notif, notificationPreferences)
-                                }
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Log.d("GitHubRepository", "Pull requests not available or permission denied for $owner/$repoName: ${e.message}")
-                    }
-                }
-
-                // Fetch issues
-                if (notificationPreferences.issueMaster) {
-                    try {
-                        val issues = apiService.getIssues(owner, repoName, state = "open", perPage = 5)
-                        for (issue in issues) {
-                            if (issue.pullRequest != null) continue
-
-                            val issueEventId = "gh_issue_${issue.id}"
-                            val existing = notificationDao.getNotificationById(issueEventId)
-                                ?: (if (!issue.htmlUrl.isNullOrBlank()) notificationDao.getNotificationByTargetUrl(issue.htmlUrl) else null)
-                                ?: notificationDao.getNotificationByRepoAndTitle(repo.fullName, "Issue #${issue.number}: ${issue.title}")
-
-                            if (existing != null) {
-                                continue
-                            }
-
-                            if (!processedEventDao.isEventProcessed(issueEventId)) {
-                                processedEventDao.insertProcessedEvent(
-                                    ProcessedEventEntity(
-                                        eventId = issueEventId,
-                                        eventType = "ISSUE",
-                                        repoFullName = repo.fullName
-                                    )
-                                )
-
-                                val currentUsername = (tokenManager.authState.value as? AuthState.Authenticated)?.username
-                                val isAssigned = !currentUsername.isNullOrBlank() &&
-                                        issue.assignees?.any { it.login.equals(currentUsername, ignoreCase = true) } == true
-
-                                val issueEventType = if (isAssigned) "ASSIGNED" else "ISSUE_OPENED"
-                                val issueActionState = if (isAssigned) "ASSIGNED" else "OPEN"
-
-                                // On first sync of a repo, past existing issues are marked as read
-                                val isRead = isFirstSyncForRepo
-
-                                val notif = GitHubNotificationEntity(
-                                    id = issueEventId,
-                                    eventType = issueEventType,
-                                    category = "ISSUE",
-                                    repoFullName = repo.fullName,
-                                    title = "Issue #${issue.number}: ${issue.title}",
-                                    body = if (isAssigned) "Assigned to you by @${issue.user.login}"
-                                           else "Opened by @${issue.user.login} in ${repo.name}",
-                                    author = issue.user.login,
-                                    avatarUrl = issue.user.avatarUrl,
-                                    targetUrl = issue.htmlUrl,
-                                    timestamp = parseIsoDate(issue.updatedAt),
-                                    isRead = isRead,
-                                    isNotified = true,
-                                    actionState = issueActionState
-                                )
-
-                                notificationDao.insert(notif)
-                                if (!isRead) {
-                                    newNotificationsCount++
-                                    NotificationHelper.postNotification(context, notif, notificationPreferences)
-                                }
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Log.d("GitHubRepository", "Issues not available or permission denied for $owner/$repoName: ${e.message}")
-                    }
-                }
-
-                // Fetch releases
-                if (notificationPreferences.releaseMaster) {
-                    try {
-                        val releases = apiService.getReleases(owner, repoName, perPage = 3)
-                        for (rel in releases) {
-                            val relEventId = "gh_rel_${rel.id}"
-                            val existing = notificationDao.getNotificationById(relEventId)
-                                ?: (if (!rel.htmlUrl.isNullOrBlank()) notificationDao.getNotificationByTargetUrl(rel.htmlUrl) else null)
-
-                            if (existing != null) {
-                                continue
-                            }
-
-                            if (!processedEventDao.isEventProcessed(relEventId)) {
-                                processedEventDao.insertProcessedEvent(
-                                    ProcessedEventEntity(
-                                        eventId = relEventId,
-                                        eventType = "RELEASE",
-                                        repoFullName = repo.fullName
-                                    )
-                                )
-
-                                val isRead = isFirstSyncForRepo
-
-                                val notif = GitHubNotificationEntity(
-                                    id = relEventId,
-                                    eventType = "RELEASE_PUBLISHED",
-                                    category = "RELEASE",
-                                    repoFullName = repo.fullName,
-                                    title = "Release ${rel.name ?: rel.tagName}",
-                                    body = "Tag: ${rel.tagName}${if (rel.prerelease) " (Pre-release)" else ""}",
-                                    author = rel.author?.login ?: owner,
-                                    avatarUrl = rel.author?.avatarUrl,
-                                    targetUrl = rel.htmlUrl,
-                                    timestamp = parseIsoDate(rel.publishedAt),
-                                    isRead = isRead,
-                                    isNotified = true,
-                                    actionState = "PUBLISHED"
-                                )
-
-                                notificationDao.insert(notif)
-                                if (!isRead) {
-                                    newNotificationsCount++
-                                    NotificationHelper.postNotification(context, notif, notificationPreferences)
-                                }
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Log.d("GitHubRepository", "Releases not available or permission denied for $owner/$repoName: ${e.message}")
-                    }
-                }
-
-                // Update repository last synced timestamp
-                repoDao.updateLastSynced(repo.id, System.currentTimeMillis())
             }
 
-            preferencesRepository.updateLastSyncTime(System.currentTimeMillis())
-            _syncStatus.value = SyncStatus.Success(newNotificationsCount, System.currentTimeMillis())
-
-            syncLogDao.insertLog(
-                SyncLogEntity(
-                    timestamp = System.currentTimeMillis(),
-                    status = "SUCCESS",
-                    itemsFound = newNotificationsCount,
-                    newNotificationsCount = newNotificationsCount,
-                    errorMessage = null
-                )
-            )
-
-            newNotificationsCount
+            val now = System.currentTimeMillis()
+            preferencesRepository.updateLastSyncTime(now)
+            val notice = when (tier) {
+                QuotaTier.CRITICAL -> "API quota nearly exhausted ($remainingQuota left): only GitHub notifications were checked"
+                QuotaTier.CONSERVATIVE -> "API quota low ($remainingQuota left): polling reduced to pull requests"
+                QuotaTier.NORMAL -> null
+            }
+            writeSyncLog("SUCCESS", newNotificationsCount, null)
+            return SyncStatus.Success(newNotificationsCount, now, notice)
         } catch (e: Exception) {
-            if (e is kotlinx.coroutines.CancellationException) throw e
-            Log.e("GitHubRepository", "Sync failed", e)
-            val isAuthError = e is HttpException && e.code() == 401
-            val isNetwork = e is IOException
-
-            if (isAuthError) {
-                tokenManager.setAuthError("Session expired or token revoked. Please sign in again.")
-                _syncStatus.value = SyncStatus.Error("Session expired or token revoked")
-            } else {
-                _isOffline.value = isNetwork
-                val errorMsg = if (isNetwork) "Offline: showing local data" else (e.message ?: "Sync error")
-                _syncStatus.value = if (isNetwork) SyncStatus.Offline(errorMsg) else SyncStatus.Error(errorMsg)
+            if (e is CancellationException) throw e
+            Log.e(TAG, "Sync failed", e)
+            val outcome: SyncStatus
+            val logMessage = when {
+                e.isUnauthorized() -> {
+                    handleUnauthorized()
+                    outcome = SyncStatus.Error(SESSION_EXPIRED_MESSAGE, retryable = false)
+                    "Session expired or token revoked"
+                }
+                e is IOException -> {
+                    _isOffline.value = true
+                    outcome = SyncStatus.Offline("Offline: showing local data")
+                    "Offline"
+                }
+                else -> {
+                    val message = e.message ?: "Sync error"
+                    outcome = SyncStatus.Error(message)
+                    message
+                }
             }
-
-            syncLogDao.insertLog(
-                SyncLogEntity(
-                    timestamp = System.currentTimeMillis(),
-                    status = "FAILED",
-                    itemsFound = 0,
-                    newNotificationsCount = 0,
-                    errorMessage = if (isAuthError) "Session expired or token revoked" else if (isNetwork) "Offline" else (e.message ?: "Sync error")
-                )
-            )
-
-            0
+            writeSyncLog("FAILED", 0, logMessage)
+            return outcome
         }
     }
+
+    private suspend fun writeSyncLog(status: String, newItems: Int, error: String?) {
+        syncLogDao.insertLog(
+            SyncLogEntity(
+                timestamp = System.currentTimeMillis(),
+                status = status,
+                itemsFound = newItems,
+                newNotificationsCount = newItems,
+                errorMessage = error
+            )
+        )
+        syncLogDao.pruneLogs(SYNC_LOG_RETENTION)
+    }
+
+    /**
+     * Purge duplicate notifications in the local database (e.g. the same PR/issue captured both from
+     * `/notifications` and from per-repo polling, or from historic ID format changes).
+     *
+     * Only rows pointing at a concrete PR / issue page are considered: fallback URLs (repo home,
+     * actions page, releases list) are shared by many unrelated threads and must never be merged.
+     */
+    private suspend fun purgeDuplicateNotifications() {
+        try {
+            val keepers = mutableMapOf<String, GitHubNotificationEntity>()
+            for (n in notificationDao.getAllNotificationsSync()) {
+                if (!ITEM_URL_REGEX.matches(n.targetUrl)) continue
+                val current = keepers[n.targetUrl]
+                if (current == null) {
+                    keepers[n.targetUrl] = n
+                    continue
+                }
+                // Keep the most recent row; on ties prefer the GitHub thread (it syncs read state).
+                val preferNew = n.timestamp > current.timestamp ||
+                    (n.timestamp == current.timestamp && n.id.startsWith(THREAD_ID_PREFIX) && !current.id.startsWith(THREAD_ID_PREFIX))
+                val (keep, drop) = if (preferNew) n to current else current to n
+                // If either copy was read, the user has already seen it.
+                if (drop.isRead && !keep.isRead) notificationDao.markAsRead(keep.id)
+                notificationDao.deleteNotification(drop.id)
+                keepers[n.targetUrl] = keep
+            }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.w(TAG, "Duplicate purge failed", e)
+        }
+    }
+
+    private suspend fun syncNotificationThreads(prefs: NotificationPreferences, isBaseline: Boolean): Int {
+        val remoteNotifications = try {
+            apiService.getNotifications(all = true, participating = false)
+        } catch (e: Exception) {
+            if (e is CancellationException || e.isUnauthorized()) throw e
+            Log.w(TAG, "Error fetching /notifications", e)
+            return 0
+        }
+
+        var announced = 0
+        for (item in remoteNotifications) {
+            val notifId = THREAD_ID_PREFIX + item.id
+            val updatedAt = parseIsoDate(item.updatedAt)
+            val existing = notificationDao.getNotificationById(notifId)
+
+            if (existing != null) {
+                when {
+                    // New activity on a known thread (new comment, review, push...): resurface it.
+                    item.unread && updatedAt > existing.timestamp -> {
+                        val refreshed = mapThread(item).copy(isRead = false)
+                        notificationDao.insert(refreshed)
+                        if (!isBaseline) {
+                            announced++
+                            notificationDispatcher.post(refreshed, prefs)
+                        }
+                    }
+                    // Read on GitHub (web / another device): mirror it locally.
+                    // A local "read" is never undone by a stale unread flag from GitHub.
+                    !item.unread && !existing.isRead -> {
+                        notificationDao.markAsRead(notifId)
+                        notificationDispatcher.cancel(notifId)
+                    }
+                }
+                continue
+            }
+
+            // Threads the user deleted locally stay deleted.
+            if (processedEventDao.isEventProcessed(notifId)) continue
+            processedEventDao.insertProcessedEvent(
+                ProcessedEventEntity(eventId = notifId, eventType = item.subject.type, repoFullName = item.repository.fullName)
+            )
+
+            val entity = mapThread(item)
+            notificationDao.insert(entity)
+            if (!entity.isRead && !isBaseline) {
+                announced++
+                notificationDispatcher.post(entity, prefs)
+            }
+        }
+        return announced
+    }
+
+    private fun mapThread(item: GitHubNotificationDto): GitHubNotificationEntity {
+        val reason = item.reason.lowercase()
+        val category = when (item.subject.type.uppercase()) {
+            "PULLREQUEST" -> "PR"
+            "ISSUE" -> "ISSUE"
+            "CHECKSUITE", "WORKFLOWRUN" -> "WORKFLOW"
+            "RELEASE" -> "RELEASE"
+            else -> "ACTIVITY"
+        }
+        val normalizedEventType = when (reason) {
+            "assign" -> "ASSIGNED"
+            "mention", "team_mention" -> "MENTION"
+            "comment" -> "COMMENT"
+            "review_requested" -> "REVIEW_REQUESTED"
+            else -> item.reason.uppercase()
+        }
+        val actionState = when {
+            reason.contains("review") -> "REVIEW_REQUESTED"
+            reason == "assign" -> "ASSIGNED"
+            else -> "UNREAD"
+        }
+        return GitHubNotificationEntity(
+            id = THREAD_ID_PREFIX + item.id,
+            eventType = normalizedEventType,
+            category = category,
+            repoFullName = item.repository.fullName,
+            title = item.subject.title,
+            body = "Reason: ${item.reason.replace('_', ' ')} (${item.subject.type})",
+            author = item.repository.owner.login,
+            avatarUrl = item.repository.owner.avatarUrl,
+            targetUrl = convertApiUrlToHtmlUrl(item.subject.url)
+                ?: item.repository.htmlUrl
+                ?: "https://github.com/${item.repository.fullName}",
+            timestamp = parseIsoDate(item.updatedAt),
+            isRead = !item.unread,
+            isNotified = true,
+            actionState = actionState
+        )
+    }
+
+    /** Polls one monitored repository, honouring notification preferences and the quota tier. */
+    private suspend fun syncRepository(
+        repo: MonitoredRepoEntity,
+        prefs: NotificationPreferences,
+        tier: QuotaTier,
+        isBaseline: Boolean
+    ): Int {
+        val parts = repo.fullName.split("/")
+        if (parts.size != 2) return 0
+        val (owner, repoName) = parts
+        // On first sync of a repo, past items are imported as already read.
+        val markRead = repo.lastSyncedAt == 0L
+        val announce = !isBaseline
+        val fullSweep = tier == QuotaTier.NORMAL
+        var announced = 0
+
+        suspend fun guarded(label: String, block: suspend () -> Unit) {
+            try {
+                block()
+            } catch (e: Exception) {
+                if (e is CancellationException || e.isUnauthorized()) throw e
+                Log.d(TAG, "$label not available or permission denied for ${repo.fullName}: ${e.message}")
+            }
+        }
+
+        // Fetch workflow runs (CI/CD)
+        if (fullSweep && prefs.actionMaster) guarded("Workflow runs") {
+            for (run in apiService.getWorkflowRuns(owner, repoName, perPage = 5).workflowRuns) {
+                val conclusion = run.conclusion?.uppercase() ?: run.status?.uppercase() ?: "PENDING"
+                val isFailed = conclusion in FAILED_CONCLUSIONS
+                val isSuccess = conclusion == "SUCCESS"
+                val isCancelled = conclusion == "CANCELLED"
+
+                // Only process if preferences allow it (actionSucceeded / actionCancelled are off by default)
+                val shouldProcess = (isFailed && prefs.actionFailed) ||
+                    (isSuccess && prefs.actionSucceeded) ||
+                    (isCancelled && prefs.actionCancelled)
+                if (!shouldProcess) continue
+
+                val title = "${run.name ?: "Build"} #${run.runNumber}: $conclusion"
+                val entity = GitHubNotificationEntity(
+                    id = "gh_run_${run.id}",
+                    eventType = when {
+                        isFailed -> "WORKFLOW_FAILED"
+                        isCancelled -> "WORKFLOW_CANCELLED"
+                        else -> "WORKFLOW_SUCCESS"
+                    },
+                    category = "WORKFLOW",
+                    repoFullName = repo.fullName,
+                    title = title,
+                    body = "Branch: ${run.headBranch ?: repo.defaultBranch} • Event: ${run.event ?: "push"}",
+                    author = owner,
+                    avatarUrl = null,
+                    targetUrl = run.htmlUrl,
+                    timestamp = parseIsoDate(run.updatedAt),
+                    isNotified = true,
+                    actionState = conclusion
+                )
+                if (storeRepoEvent(entity, "WORKFLOW_RUN", title, markRead, announce, prefs)) announced++
+            }
+        }
+
+        val currentUsername = (tokenManager.authState.value as? AuthState.Authenticated)?.username
+
+        // Fetch recently updated pull requests of any state (kept even in conservative mode:
+        // review requests are high-value). Including closed PRs lets merges/closures be announced.
+        if (prefs.prMaster) guarded("Pull requests") {
+            for (pr in apiService.getPullRequests(owner, repoName, state = "all", perPage = 5)) {
+                val isReviewRequested = !currentUsername.isNullOrBlank() &&
+                    pr.requestedReviewers?.any { it.login.equals(currentUsername, ignoreCase = true) } == true
+                val terminalState = when {
+                    pr.mergedAt != null -> "MERGED"
+                    pr.state.equals("closed", ignoreCase = true) -> "CLOSED"
+                    else -> null
+                }
+                val title = "PR #${pr.number}: ${pr.title}"
+                val entity = GitHubNotificationEntity(
+                    id = "gh_pr_${pr.id}",
+                    eventType = terminalState ?: if (isReviewRequested) "REVIEW_REQUESTED" else "PR_OPENED",
+                    category = "PR",
+                    repoFullName = repo.fullName,
+                    title = title,
+                    body = when {
+                        terminalState == "MERGED" -> "Merged • opened by @${pr.user.login}"
+                        terminalState == "CLOSED" -> "Closed without merging • opened by @${pr.user.login}"
+                        isReviewRequested -> "Review requested from you by @${pr.user.login}"
+                        else -> "Opened by @${pr.user.login} • ${if (pr.draft) "Draft" else "Ready for review"}"
+                    },
+                    author = pr.user.login,
+                    avatarUrl = pr.user.avatarUrl,
+                    targetUrl = pr.htmlUrl,
+                    timestamp = parseIsoDate(pr.updatedAt),
+                    isNotified = true,
+                    actionState = terminalState ?: if (isReviewRequested) "REVIEW_REQUESTED" else "OPEN"
+                )
+                val announcedNow = if (terminalState != null) {
+                    storePullRequestTransition(entity, title, markRead, announce, prefs)
+                } else {
+                    storeRepoEvent(entity, "PULL_REQUEST", title, markRead, announce, prefs)
+                }
+                if (announcedNow) announced++
+            }
+        }
+
+        // Fetch issues
+        if (fullSweep && prefs.issueMaster) guarded("Issues") {
+            for (issue in apiService.getIssues(owner, repoName, state = "open", perPage = 5)) {
+                if (issue.pullRequest != null) continue
+                val isAssigned = !currentUsername.isNullOrBlank() &&
+                    issue.assignees?.any { it.login.equals(currentUsername, ignoreCase = true) } == true
+                val title = "Issue #${issue.number}: ${issue.title}"
+                val entity = GitHubNotificationEntity(
+                    id = "gh_issue_${issue.id}",
+                    eventType = if (isAssigned) "ASSIGNED" else "ISSUE_OPENED",
+                    category = "ISSUE",
+                    repoFullName = repo.fullName,
+                    title = title,
+                    body = if (isAssigned) "Assigned to you by @${issue.user.login}"
+                           else "Opened by @${issue.user.login} in ${repo.name}",
+                    author = issue.user.login,
+                    avatarUrl = issue.user.avatarUrl,
+                    targetUrl = issue.htmlUrl,
+                    timestamp = parseIsoDate(issue.updatedAt),
+                    isNotified = true,
+                    actionState = if (isAssigned) "ASSIGNED" else "OPEN"
+                )
+                if (storeRepoEvent(entity, "ISSUE", title, markRead, announce, prefs)) announced++
+            }
+        }
+
+        // Fetch releases
+        if (fullSweep && prefs.releaseMaster) guarded("Releases") {
+            for (rel in apiService.getReleases(owner, repoName, perPage = 3)) {
+                val entity = GitHubNotificationEntity(
+                    id = "gh_rel_${rel.id}",
+                    eventType = "RELEASE_PUBLISHED",
+                    category = "RELEASE",
+                    repoFullName = repo.fullName,
+                    title = "Release ${rel.name ?: rel.tagName}",
+                    body = "Tag: ${rel.tagName}${if (rel.prerelease) " (Pre-release)" else ""}",
+                    author = rel.author?.login ?: owner,
+                    avatarUrl = rel.author?.avatarUrl,
+                    targetUrl = rel.htmlUrl,
+                    timestamp = parseIsoDate(rel.publishedAt),
+                    isNotified = true,
+                    actionState = "PUBLISHED"
+                )
+                if (storeRepoEvent(entity, "RELEASE", null, markRead, announce, prefs)) announced++
+            }
+        }
+
+        return announced
+    }
+
+    /**
+     * Stores a polled repository event once. Skips anything already known by id, target URL or
+     * (repo, title), and anything previously processed (including items the user deleted).
+     *
+     * @return true when the event was announced to the user.
+     */
+    private suspend fun storeRepoEvent(
+        entity: GitHubNotificationEntity,
+        processedType: String,
+        dedupeTitle: String?,
+        markRead: Boolean,
+        announce: Boolean,
+        prefs: NotificationPreferences
+    ): Boolean {
+        val existing = notificationDao.getNotificationById(entity.id)
+            ?: entity.targetUrl.takeIf { it.isNotBlank() }?.let { notificationDao.getNotificationByTargetUrl(it) }
+            ?: dedupeTitle?.let { notificationDao.getNotificationByRepoAndTitle(entity.repoFullName, it) }
+        if (existing != null || processedEventDao.isEventProcessed(entity.id)) return false
+
+        processedEventDao.insertProcessedEvent(
+            ProcessedEventEntity(eventId = entity.id, eventType = processedType, repoFullName = entity.repoFullName)
+        )
+        val stored = entity.copy(isRead = markRead)
+        notificationDao.insert(stored)
+        if (stored.isRead || !announce) return false
+        notificationDispatcher.post(stored, prefs)
+        return true
+    }
+
+    /**
+     * Records a merged/closed pull request. A PR already stored in another state is updated in place
+     * and resurfaced as unread; unseen PRs go through [storeRepoEvent] (so user-deleted items stay deleted).
+     *
+     * @return true when the transition was announced to the user.
+     */
+    private suspend fun storePullRequestTransition(
+        entity: GitHubNotificationEntity,
+        dedupeTitle: String,
+        markRead: Boolean,
+        announce: Boolean,
+        prefs: NotificationPreferences
+    ): Boolean {
+        val existing = notificationDao.getNotificationById(entity.id)
+            ?: return storeRepoEvent(entity, "PULL_REQUEST", dedupeTitle, markRead, announce, prefs)
+        if (existing.actionState == entity.actionState) return false
+
+        val updated = entity.copy(isRead = markRead)
+        notificationDao.insert(updated)
+        if (updated.isRead || !announce) return false
+        notificationDispatcher.post(updated, prefs)
+        return true
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Assistant / maintenance
+    // ---------------------------------------------------------------------------------------------
 
     suspend fun getAssistantSummary(): AssistantSummary = withContext(Dispatchers.IO) {
         val unread = notificationDao.getUnreadNotifications()
@@ -699,13 +820,11 @@ class GitHubRepository(
         var pendingReviews = 0
         var assignedIssues = 0
         var failedWorkflows = 0
-        var unreadNotifications = unread.size
-
         val actionableItems = mutableListOf<GitHubNotificationEntity>()
 
         for (item in unread) {
             when {
-                item.category == "WORKFLOW" && (item.actionState == "FAILURE" || item.actionState == "FAILED") -> {
+                item.category == "WORKFLOW" && isFailedWorkflow(item) -> {
                     failedWorkflows++
                     actionableItems.add(item)
                 }
@@ -723,25 +842,34 @@ class GitHubRepository(
             }
         }
 
-        val total = pendingReviews + assignedIssues + failedWorkflows
-
         AssistantSummary(
             pendingReviewRequests = pendingReviews,
             assignedIssues = assignedIssues,
             failedWorkflows = failedWorkflows,
-            unreadNotifications = unreadNotifications,
-            totalActionableItems = total,
+            unreadNotifications = unread.size,
+            totalActionableItems = pendingReviews + assignedIssues + failedWorkflows,
             topActionableItems = actionableItems
         )
     }
 
+    private fun isFailedWorkflow(item: GitHubNotificationEntity): Boolean =
+        item.eventType == "WORKFLOW_FAILED" ||
+            item.actionState?.uppercase()?.let { it in FAILED_CONCLUSIONS } == true ||
+            // GitHub CheckSuite threads: "CI workflow run failed for main branch"
+            (item.id.startsWith(THREAD_ID_PREFIX) && item.title.contains("failed", ignoreCase = true))
+
+    /**
+     * Clears cached notifications and sync history. The next sweep is treated as a fresh baseline,
+     * so re-imported history is stored silently rather than re-announced.
+     */
     suspend fun clearCache() = withContext(Dispatchers.IO) {
         notificationDao.clearAllNotifications()
         processedEventDao.clearProcessedEvents()
         syncLogDao.clearLogs()
+        notificationDispatcher.cancelAll()
     }
 
-    suspend fun createTestNotification(context: Context) = withContext(Dispatchers.IO) {
+    suspend fun createTestNotification() = withContext(Dispatchers.IO) {
         val testId = "test_event_${System.currentTimeMillis()}"
         val testNotif = GitHubNotificationEntity(
             id = testId,
@@ -759,8 +887,34 @@ class GitHubRepository(
             actionState = "REVIEW_REQUESTED"
         )
         notificationDao.insert(testNotif)
-        NotificationHelper.postNotification(context, testNotif, preferencesRepository.notificationPrefs.value)
+        notificationDispatcher.post(testNotif, preferencesRepository.notificationPrefs.value)
     }
+
+    // ---------------------------------------------------------------------------------------------
+    // Helpers
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * Maps a REST subject URL (`https://api.github.com/repos/{o}/{r}/{kind}/{id}`) to the matching
+     * web page. Returns null for kinds without a stable web equivalent so callers fall back to the
+     * repository page instead of producing a 404 link.
+     */
+    private fun convertApiUrlToHtmlUrl(apiUrl: String?): String? {
+        val match = apiUrl?.let { API_SUBJECT_URL_REGEX.find(it) } ?: return null
+        val (owner, repo, kind, id) = match.destructured
+        val base = "https://github.com/$owner/$repo"
+        return when (kind) {
+            "pulls" -> if (id.isNotEmpty()) "$base/pull/$id" else null
+            "issues" -> if (id.isNotEmpty()) "$base/issues/$id" else null
+            "commits" -> if (id.isNotEmpty()) "$base/commit/$id" else null
+            "discussions" -> if (id.isNotEmpty()) "$base/discussions/$id" else null
+            // The API exposes numeric release ids, which are not valid in web URLs.
+            "releases" -> "$base/releases"
+            else -> null
+        }
+    }
+
+    private fun Throwable.isUnauthorized(): Boolean = this is HttpException && code() == 401
 
     fun parseIsoDate(iso: String?): Long {
         if (iso.isNullOrBlank()) return System.currentTimeMillis()
@@ -789,5 +943,28 @@ class GitHubRepository(
         }
         return System.currentTimeMillis()
     }
-}
 
+    companion object {
+        private const val TAG = "GitHubRepository"
+        private const val THREAD_ID_PREFIX = "gh_thread_"
+        private const val SESSION_EXPIRED_MESSAGE = "Session expired or token revoked. Please sign in again."
+
+        /** Below this many remaining core requests only `/notifications` is polled. */
+        const val RATE_CRITICAL_THRESHOLD = 100
+        /** Below this many remaining core requests only pull requests are polled per repo. */
+        const val RATE_CONSERVATIVE_THRESHOLD = 500
+
+        private const val REPO_PAGE_SIZE = 100
+        private const val MAX_REPO_PAGES = 10
+        private const val REPO_REFRESH_INTERVAL_MS = 12 * 60 * 60 * 1000L
+        private const val STARTER_REPO_COUNT = 3
+        private const val REPOS_PER_SWEEP = 5
+        private const val SYNC_LOG_RETENTION = 200
+        private const val SQL_IN_CHUNK = 500
+
+        private val FAILED_CONCLUSIONS = setOf("FAILURE", "FAILED", "TIMED_OUT", "STARTUP_FAILURE")
+        private val ITEM_URL_REGEX = Regex("^https://github\\.com/[^/]+/[^/]+/(pull|issues)/\\d+$")
+        private val API_SUBJECT_URL_REGEX =
+            Regex("^https://api\\.github\\.com/repos/([^/]+)/([^/]+)/([^/?#]+)(?:/([^/?#]+))?")
+    }
+}

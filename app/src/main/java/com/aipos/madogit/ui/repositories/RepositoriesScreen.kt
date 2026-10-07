@@ -59,6 +59,7 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -79,9 +80,9 @@ fun RepositoriesScreen(
     val repos by viewModel.filteredRepos.collectAsState()
     val searchQuery by viewModel.repoSearchQuery.collectAsState()
     val monitoredCount by viewModel.monitoredCount.collectAsState()
-    val syncStatus by viewModel.syncStatus.collectAsState()
+    val isRefreshingRepos by viewModel.isRefreshingRepos.collectAsState()
 
-    var activeFilter by remember { mutableStateOf("ALL") }
+    var activeFilter by rememberSaveable { mutableStateOf("ALL") }
 
     val displayedRepos = remember(repos, activeFilter) {
         when (activeFilter) {
@@ -112,7 +113,7 @@ fun RepositoriesScreen(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "$monitoredCount of ${repos.size} active",
+                    text = "$monitoredCount monitored",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -123,6 +124,7 @@ fun RepositoriesScreen(
                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     viewModel.refreshRepositories()
                 },
+                enabled = !isRefreshingRepos,
                 modifier = Modifier.testTag("refresh_repos_button")
             ) {
                 Icon(
@@ -187,7 +189,7 @@ fun RepositoriesScreen(
             ) {
                 val filters = listOf(
                     Pair("All (${repos.size})", "ALL"),
-                    Pair("Monitored ($monitoredCount)", "MONITORED"),
+                    Pair("Monitored (${repos.count { it.isMonitored }})", "MONITORED"),
                     Pair("Private (${repos.count { it.isPrivate }})", "PRIVATE"),
                     Pair("Public (${repos.count { !it.isPrivate }})", "PUBLIC")
                 )
@@ -299,7 +301,7 @@ fun RepositoriesScreen(
         }
 
         MadoPullToRefreshBox(
-            isRefreshing = syncStatus is com.aipos.madogit.data.repository.SyncStatus.Syncing,
+            isRefreshing = isRefreshingRepos,
             onRefresh = { viewModel.refreshRepositories() },
             modifier = Modifier.fillMaxSize()
         ) {
@@ -336,30 +338,6 @@ fun RepositoriesScreen(
                 }
             }
         }
-    }
-}
-
-fun detectRepoLanguage(repo: MonitoredRepoEntity): String? {
-    val nameLower = repo.name.lowercase()
-    val descLower = (repo.description ?: "").lowercase()
-    return when {
-        nameLower.endsWith("-kt") || "kotlin" in descLower || "compose" in descLower || "android" in descLower -> "Kotlin"
-        nameLower.endsWith("-ts") || "typescript" in descLower -> "TypeScript"
-        nameLower.endsWith("-js") || "javascript" in descLower || "react" in descLower || "vue" in descLower || "node" in descLower -> "JavaScript"
-        "python" in descLower || nameLower.endsWith("-py") || "django" in descLower || "flask" in descLower -> "Python"
-        "rust" in descLower || nameLower.endsWith("-rs") -> "Rust"
-        "golang" in descLower || "go" in descLower -> "Go"
-        "swift" in descLower || "ios" in descLower -> "Swift"
-        "java" in descLower || "spring" in descLower -> "Java"
-        "dart" in descLower || "flutter" in descLower -> "Dart"
-        "ruby" in descLower || nameLower.endsWith("-rb") -> "Ruby"
-        "php" in descLower -> "PHP"
-        "c++" in descLower || "cpp" in descLower -> "C++"
-        "c#" in descLower || "csharp" in descLower -> "C#"
-        "html" in descLower -> "HTML"
-        "css" in descLower -> "CSS"
-        "shell" in descLower || "bash" in descLower -> "Shell"
-        else -> null
     }
 }
 
@@ -432,7 +410,8 @@ private fun RepoItemCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    val lang = repo.language?.ifBlank { null } ?: detectRepoLanguage(repo)
+                    // Only the language reported by GitHub; guessing from descriptions mislabelled repos.
+                    val lang = repo.language?.ifBlank { null }
                     if (lang != null) {
                         LanguageDot(language = lang)
                     }

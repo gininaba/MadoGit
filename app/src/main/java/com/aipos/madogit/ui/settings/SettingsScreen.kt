@@ -140,7 +140,7 @@ fun SettingsScreen(
 
                                 Button(
                                     onClick = {
-                                        viewModel.disconnect(context)
+                                        viewModel.disconnect()
                                         onSignOut()
                                     },
                                     colors = ButtonDefaults.buttonColors(
@@ -321,6 +321,9 @@ fun SettingsScreen(
                             SubOptionCheckbox("PR merged", notificationPrefs.prMerged) {
                                 viewModel.updateNotificationPreferences(notificationPrefs.copy(prMerged = it))
                             }
+                            SubOptionCheckbox("PR closed without merge", notificationPrefs.prClosed) {
+                                viewModel.updateNotificationPreferences(notificationPrefs.copy(prClosed = it))
+                            }
                         }
                     }
 
@@ -344,6 +347,9 @@ fun SettingsScreen(
                             }
                             SubOptionCheckbox("Mentioned in issue/comment", notificationPrefs.issueMentioned) {
                                 viewModel.updateNotificationPreferences(notificationPrefs.copy(issueMentioned = it))
+                            }
+                            SubOptionCheckbox("New comments on threads", notificationPrefs.issueCommented) {
+                                viewModel.updateNotificationPreferences(notificationPrefs.copy(issueCommented = it))
                             }
                         }
                     }
@@ -382,6 +388,27 @@ fun SettingsScreen(
                             viewModel.updateNotificationPreferences(notificationPrefs.copy(releaseMaster = it))
                         }
                     )
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(vertical = 10.dp))
+
+                    // Master: Repository activity (commits, comments)
+                    CategoryMasterToggle(
+                        title = "Repository Activity",
+                        enabled = notificationPrefs.activityMaster,
+                        onToggle = {
+                            viewModel.updateNotificationPreferences(notificationPrefs.copy(activityMaster = it))
+                        }
+                    )
+                    if (notificationPrefs.activityMaster) {
+                        Column(modifier = Modifier.padding(start = 16.dp, top = 4.dp)) {
+                            SubOptionCheckbox("Commits pushed", notificationPrefs.activityCommits) {
+                                viewModel.updateNotificationPreferences(notificationPrefs.copy(activityCommits = it))
+                            }
+                            SubOptionCheckbox("Commit comments", notificationPrefs.activityComments) {
+                                viewModel.updateNotificationPreferences(notificationPrefs.copy(activityComments = it))
+                            }
+                        }
+                    }
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(vertical = 10.dp))
 
@@ -451,7 +478,7 @@ fun SettingsScreen(
                     // Test Notification Button
                     Button(
                         onClick = {
-                            viewModel.sendTestNotification(context)
+                            viewModel.sendTestNotification()
                             Toast.makeText(context, "Test notification dispatched!", Toast.LENGTH_SHORT).show()
                         },
                         colors = ButtonDefaults.buttonColors(
@@ -551,6 +578,13 @@ fun SettingsScreen(
                             viewModel.updateSyncPreferences(syncPrefs.copy(wifiOnly = it), context)
                         }
                     )
+                    CategoryMasterToggle(
+                        title = "Auto-monitor newly discovered repos",
+                        enabled = syncPrefs.monitorAllByDefault,
+                        onToggle = {
+                            viewModel.updateSyncPreferences(syncPrefs.copy(monitorAllByDefault = it), context)
+                        }
+                    )
                 }
             }
 
@@ -601,7 +635,7 @@ fun SettingsScreen(
             item {
                 SettingsSectionCard(title = "About", icon = Icons.Default.Info) {
                     Text(
-                        text = "MadoGit v1.0",
+                        text = "MadoGit v${com.aipos.madogit.BuildConfig.VERSION_NAME}",
                         style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.Bold

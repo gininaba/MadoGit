@@ -1,5 +1,6 @@
 package com.aipos.madogit.ui.auth
 
+import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -54,10 +55,12 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import com.aipos.madogit.R
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,6 +74,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aipos.madogit.data.auth.AuthState
 import com.aipos.madogit.ui.MainViewModel
 import com.aipos.madogit.ui.components.openExternalUrl
 
@@ -81,11 +85,17 @@ fun AuthScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    var selectedTab by remember { mutableIntStateOf(0) } // 0 = Personal Access Token, 1 = OAuth App
+    val authState by viewModel.authState.collectAsState()
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) } // 0 = Personal Access Token, 1 = OAuth App
+    // Token input deliberately uses remember (not rememberSaveable) so the secret never lands in saved state.
     var tokenInput by remember { mutableStateOf("") }
     var showToken by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    // Errors raised outside this screen (expired session, OAuth callback failures) live in AuthState.
+    val shownError = errorMessage ?: (authState as? AuthState.Error)?.message
+    val isBusy = isLoading || authState is AuthState.Loading
 
     // OAuth configuration states
     var oauthClientId by remember { mutableStateOf(viewModel.getOAuthClientId()) }
@@ -184,7 +194,7 @@ fun AuthScreen(
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        if (errorMessage != null) {
+        if (shownError != null) {
             Surface(
                 color = MaterialTheme.colorScheme.errorContainer,
                 shape = RoundedCornerShape(12.dp),
@@ -205,7 +215,7 @@ fun AuthScreen(
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = errorMessage ?: "",
+                        text = shownError,
                         color = MaterialTheme.colorScheme.onErrorContainer,
                         style = MaterialTheme.typography.bodySmall
                     )
@@ -360,7 +370,7 @@ fun AuthScreen(
                                 }
                             }
                         },
-                        enabled = !isLoading,
+                        enabled = !isBusy,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary
@@ -371,7 +381,7 @@ fun AuthScreen(
                             .height(52.dp)
                             .testTag("auth_connect_button")
                     ) {
-                        if (isLoading) {
+                        if (isBusy) {
                             CircularProgressIndicator(
                                 color = MaterialTheme.colorScheme.onPrimary,
                                 strokeWidth = 2.dp,
@@ -512,9 +522,19 @@ fun AuthScreen(
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             viewModel.saveOAuthConfiguration(oauthClientId, oauthClientSecret, oauthRedirectUri)
                             val oauthState = viewModel.generateOAuthState()
-                            val authorizeUrl = "https://github.com/login/oauth/authorize?client_id=${oauthClientId.trim()}&scope=repo,notifications,workflow,read:user&redirect_uri=${oauthRedirectUri.trim()}&state=$oauthState"
+                            val authorizeUrl = Uri.Builder()
+                                .scheme("https")
+                                .authority("github.com")
+                                .path("/login/oauth/authorize")
+                                .appendQueryParameter("client_id", oauthClientId.trim())
+                                .appendQueryParameter("scope", "repo notifications workflow read:user")
+                                .appendQueryParameter("redirect_uri", oauthRedirectUri.trim())
+                                .appendQueryParameter("state", oauthState)
+                                .build()
+                                .toString()
                             openExternalUrl(context, authorizeUrl)
                         },
+                        enabled = !isBusy,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary
