@@ -68,6 +68,7 @@ import androidx.compose.ui.semantics.semantics
 import com.aipos.madogit.ui.components.EmptyStateView
 import com.aipos.madogit.ui.components.LanguageDot
 import com.aipos.madogit.ui.components.MadoPullToRefreshBox
+import com.aipos.madogit.ui.components.ResponsiveContentContainer
 import com.aipos.madogit.ui.components.openExternalUrl
 
 @Composable
@@ -93,11 +94,33 @@ fun RepositoriesScreen(
         }
     }
 
-    Column(
+    val filterCounts = remember(repos) {
+        var monitored = 0
+        var private = 0
+        for (repo in repos) {
+            if (repo.isMonitored) monitored++
+            if (repo.isPrivate) private++
+        }
+        listOf(
+            Pair("All (${repos.size})", "ALL"),
+            Pair("Monitored ($monitored)", "MONITORED"),
+            Pair("Private ($private)", "PRIVATE"),
+            Pair("Public (${repos.size - private})", "PUBLIC")
+        )
+    }
+
+    Box(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
+        ResponsiveContentContainer(
+            maxWidth = 960.dp,
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize()
+            ) {
         // Header
         Row(
             modifier = Modifier
@@ -187,15 +210,8 @@ fun RepositoriesScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                val filters = listOf(
-                    Pair("All (${repos.size})", "ALL"),
-                    Pair("Monitored (${repos.count { it.isMonitored }})", "MONITORED"),
-                    Pair("Private (${repos.count { it.isPrivate }})", "PRIVATE"),
-                    Pair("Public (${repos.count { !it.isPrivate }})", "PUBLIC")
-                )
-
-                items(filters.size) { index ->
-                    val (title, key) = filters[index]
+                items(filterCounts.size, key = { filterCounts[it].second }) { index ->
+                    val (title, key) = filterCounts[index]
                     val isSelected = activeFilter == key
                     FilterChip(
                         selected = isSelected,
@@ -339,6 +355,8 @@ fun RepositoriesScreen(
             }
         }
     }
+}
+}
 }
 
 

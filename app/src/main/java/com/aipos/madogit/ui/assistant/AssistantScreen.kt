@@ -34,9 +34,16 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -53,17 +60,12 @@ import coil.compose.AsyncImage
 import com.aipos.madogit.data.database.entities.GitHubNotificationEntity
 import com.aipos.madogit.ui.MainViewModel
 import com.aipos.madogit.ui.components.EmptyStateView
+import com.aipos.madogit.ui.components.GitHubEventCard
+import com.aipos.madogit.ui.components.MadoPullToRefreshBox
+import com.aipos.madogit.ui.components.ResponsiveContentContainer
 import com.aipos.madogit.ui.components.StatusBadge
 import com.aipos.madogit.ui.components.SyncButton
 import com.aipos.madogit.ui.components.formatRelativeTime
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
-import com.aipos.madogit.ui.components.MadoPullToRefreshBox
 import com.aipos.madogit.ui.components.openExternalUrl
 
 @Composable
@@ -85,11 +87,18 @@ fun AssistantScreen(
         }
     }
 
-    Column(
+    Box(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
+        ResponsiveContentContainer(
+            maxWidth = 960.dp,
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize()
+            ) {
         // Top Header
         Row(
             modifier = Modifier
@@ -228,16 +237,17 @@ fun AssistantScreen(
                     }
                 } else {
                     items(filteredItems, key = { it.id }) { item ->
-                        ActionableTaskCard(
-                            item = item,
-                            onOpenUrl = {
+                        GitHubEventCard(
+                            notification = item,
+                            primaryActionLabel = "Action on GitHub",
+                            onOpenClick = {
                                 openExternalUrl(
                                     context,
                                     if (item.targetUrl.isNotBlank()) item.targetUrl
                                     else "https://github.com/${item.repoFullName}"
                                 )
                             },
-                            onMarkDone = {
+                            onMarkReadClick = {
                                 viewModel.markNotificationRead(item.id)
                             },
                             modifier = Modifier.animateItem()
@@ -247,6 +257,8 @@ fun AssistantScreen(
             }
         }
     }
+}
+}
 }
 
 
@@ -272,141 +284,4 @@ private fun AssistantBreakdownRow(
     }
 }
 
-@Composable
-private fun ActionableTaskCard(
-    item: GitHubNotificationEntity,
-    onOpenUrl: () -> Unit,
-    onMarkDone: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        shape = MaterialTheme.shapes.medium,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
-        modifier = modifier
-            .fillMaxWidth()
-            .testTag("actionable_task_card_${item.id}")
-    ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            // Header Row: Avatar, Repo, StatusBadge, Timestamp
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    if (!item.avatarUrl.isNullOrBlank()) {
-                        AsyncImage(
-                            model = item.avatarUrl,
-                            contentDescription = item.author,
-                            modifier = Modifier
-                                .size(18.dp)
-                                .clip(CircleShape)
-                                .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape),
-                            contentScale = ContentScale.Crop
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                    }
 
-                    Text(
-                        text = item.repoFullName,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    StatusBadge(
-                        text = item.eventType.replace('_', ' '),
-                        category = item.category,
-                        actionState = item.actionState
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                Text(
-                    text = formatRelativeTime(item.timestamp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1
-                )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = item.title,
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.Bold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-
-            if (item.body.isNotBlank()) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = item.body,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "@${item.author}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        shape = MaterialTheme.shapes.small,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                        modifier = Modifier.clickable { onMarkDone() }
-                    ) {
-                        Text(
-                            text = "Dismiss",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                        )
-                    }
-
-                    Button(
-                        onClick = onOpenUrl,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary
-                        ),
-                        shape = MaterialTheme.shapes.small,
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                        modifier = Modifier.height(34.dp)
-                    ) {
-                        Text("Action on GitHub", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(13.dp))
-                    }
-                }
-            }
-        }
-    }
-}

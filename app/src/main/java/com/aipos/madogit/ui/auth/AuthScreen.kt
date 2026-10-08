@@ -76,6 +76,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aipos.madogit.data.auth.AuthState
 import com.aipos.madogit.ui.MainViewModel
+import com.aipos.madogit.ui.components.ResponsiveContentContainer
 import com.aipos.madogit.ui.components.openExternalUrl
 
 @Composable
@@ -106,16 +107,25 @@ fun AuthScreen(
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val haptic = LocalHapticFeedback.current
 
-    Column(
+    Box(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
-            .navigationBarsPadding()
-            .padding(horizontal = 20.dp)
-            .verticalScroll(scrollState),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .navigationBarsPadding(),
+        contentAlignment = Alignment.TopCenter
     ) {
+        ResponsiveContentContainer(
+            maxWidth = 540.dp,
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 20.dp)
+                    .verticalScroll(scrollState),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
         Spacer(modifier = Modifier.height(36.dp))
 
         // Hero Brand Logo
@@ -600,4 +610,6 @@ fun AuthScreen(
             }
         }
     }
+}
+}
 }

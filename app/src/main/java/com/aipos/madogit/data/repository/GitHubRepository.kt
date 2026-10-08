@@ -926,17 +926,9 @@ class GitHubRepository(
                 return java.time.OffsetDateTime.parse(iso).toInstant().toEpochMilli()
             } catch (_: Exception) {}
         }
-        val patterns = arrayOf(
-            "yyyy-MM-dd'T'HH:mm:ss'Z'",
-            "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
-            "yyyy-MM-dd'T'HH:mm:ssXXX",
-            "yyyy-MM-dd'T'HH:mm:ss.SSSXXX"
-        )
-        for (pattern in patterns) {
+        val formatters = FALLBACK_ISO_FORMATTERS.get() ?: emptyArray()
+        for (format in formatters) {
             try {
-                val format = SimpleDateFormat(pattern, Locale.US).apply {
-                    timeZone = TimeZone.getTimeZone("UTC")
-                }
                 val parsed = format.parse(iso)
                 if (parsed != null) return parsed.time
             } catch (_: Exception) {}
@@ -948,6 +940,15 @@ class GitHubRepository(
         private const val TAG = "GitHubRepository"
         private const val THREAD_ID_PREFIX = "gh_thread_"
         private const val SESSION_EXPIRED_MESSAGE = "Session expired or token revoked. Please sign in again."
+
+        private val FALLBACK_ISO_FORMATTERS = ThreadLocal.withInitial {
+            arrayOf(
+                SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") },
+                SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") },
+                SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") },
+                SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
+            )
+        }
 
         /** Below this many remaining core requests only `/notifications` is polled. */
         const val RATE_CRITICAL_THRESHOLD = 100

@@ -212,7 +212,6 @@ class MainViewModel(
     fun triggerSync() {
         viewModelScope.launch {
             repository.syncAll()
-            _assistantSummary.value = repository.getAssistantSummary()
         }
     }
 
@@ -261,28 +260,24 @@ class MainViewModel(
     fun markNotificationRead(id: String) {
         viewModelScope.launch {
             repository.markNotificationAsRead(id)
-            _assistantSummary.value = repository.getAssistantSummary()
         }
     }
 
     fun markAllNotificationsRead() {
         viewModelScope.launch {
             repository.markAllNotificationsAsRead()
-            _assistantSummary.value = repository.getAssistantSummary()
         }
     }
 
     fun deleteNotification(id: String) {
         viewModelScope.launch {
             repository.deleteNotification(id)
-            _assistantSummary.value = repository.getAssistantSummary()
         }
     }
 
     fun clearAllNotifications() {
         viewModelScope.launch {
             repository.clearAllNotifications()
-            _assistantSummary.value = repository.getAssistantSummary()
         }
     }
 
@@ -314,14 +309,12 @@ class MainViewModel(
     fun sendTestNotification() {
         viewModelScope.launch {
             repository.createTestNotification()
-            _assistantSummary.value = repository.getAssistantSummary()
         }
     }
 
     fun clearCache() {
         viewModelScope.launch {
             repository.clearCache()
-            _assistantSummary.value = repository.getAssistantSummary()
         }
     }
 

@@ -55,6 +55,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -69,6 +70,7 @@ import com.aipos.madogit.data.auth.AuthState
 import com.aipos.madogit.data.repository.ThemeMode
 import com.aipos.madogit.ui.MainViewModel
 import com.aipos.madogit.ui.components.RateLimitGauge
+import com.aipos.madogit.ui.components.ResponsiveContentContainer
 import com.aipos.madogit.ui.components.openExternalUrl
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -90,11 +92,23 @@ fun SettingsScreen(
     val lastSyncTime by viewModel.lastSyncTimestamp.collectAsState()
     val monitoredCount by viewModel.monitoredCount.collectAsState()
 
-    Column(
+    val formattedLastSync = remember(lastSyncTime) {
+        if (lastSyncTime > 0) SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(lastSyncTime))
+        else "Never"
+    }
+
+    Box(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
+        ResponsiveContentContainer(
+            maxWidth = 840.dp,
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize()
+            ) {
         // Header
         Row(
             modifier = Modifier
@@ -603,10 +617,7 @@ fun SettingsScreen(
 
                     DiagnosticItem("API Rate Limit Remaining", "${rateLimitInfo.first} / ${rateLimitInfo.second}")
                     DiagnosticItem("Monitored Repositories", "$monitoredCount repos")
-                    DiagnosticItem(
-                        "Last Synchronized",
-                        if (lastSyncTime > 0) SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(lastSyncTime)) else "Never"
-                    )
+                    DiagnosticItem("Last Synchronized", formattedLastSync)
                     DiagnosticItem("Background Engine", "WorkManager (Periodic)")
 
                     Spacer(modifier = Modifier.height(14.dp))
@@ -763,4 +774,6 @@ fun SettingsScreen(
             }
         }
     }
+}
+}
 }

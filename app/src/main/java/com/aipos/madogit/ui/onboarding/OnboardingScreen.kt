@@ -69,6 +69,7 @@ import androidx.compose.ui.unit.sp
 import com.aipos.madogit.data.auth.AuthState
 import com.aipos.madogit.ui.MainViewModel
 import com.aipos.madogit.ui.auth.AuthScreen
+import com.aipos.madogit.ui.components.ResponsiveContentContainer
 
 @Composable
 fun OnboardingScreen(
@@ -167,17 +168,26 @@ private fun WelcomeStep(onNext: () -> Unit) {
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val scrollState = rememberScrollState()
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
-            .navigationBarsPadding()
-            .padding(horizontal = 24.dp, vertical = 20.dp)
-            .verticalScroll(scrollState),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+            .navigationBarsPadding(),
+        contentAlignment = Alignment.Center
     ) {
+        ResponsiveContentContainer(
+            maxWidth = 540.dp,
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 24.dp, vertical = 20.dp)
+                    .verticalScroll(scrollState),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
         // Official Brand Logo
         Image(
             painter = painterResource(id = if (isDark) R.drawable.ic_madogit_logo_dark else R.drawable.ic_madogit_logo_light),
@@ -230,7 +240,7 @@ private fun WelcomeStep(onNext: () -> Unit) {
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        Button(
+            Button(
             onClick = {
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                 onNext()
@@ -250,6 +260,8 @@ private fun WelcomeStep(onNext: () -> Unit) {
             Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
         }
     }
+}
+}
 }
 
 @Composable
@@ -305,17 +317,26 @@ private fun FeatureHighlightRow(
 private fun SetupCompletedStep(onFinish: () -> Unit) {
     val scrollState = rememberScrollState()
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
-            .navigationBarsPadding()
-            .padding(24.dp)
-            .verticalScroll(scrollState),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+            .navigationBarsPadding(),
+        contentAlignment = Alignment.Center
     ) {
+        ResponsiveContentContainer(
+            maxWidth = 540.dp,
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp)
+                    .verticalScroll(scrollState),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
         Box(
             modifier = Modifier
                 .size(76.dp)
@@ -368,4 +389,6 @@ private fun SetupCompletedStep(onFinish: () -> Unit) {
             Text("Go to Dashboard", fontWeight = FontWeight.Bold, fontSize = 15.sp)
         }
     }
+}
+}
 }

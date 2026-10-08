@@ -80,8 +80,10 @@ import coil.compose.AsyncImage
 import com.aipos.madogit.data.database.entities.GitHubNotificationEntity
 import com.aipos.madogit.ui.MainViewModel
 import com.aipos.madogit.ui.components.EmptyStateView
+import com.aipos.madogit.ui.components.GitHubEventCard
 import com.aipos.madogit.ui.components.MadoPullToRefreshBox
 import com.aipos.madogit.ui.components.MadoSwipeToDismissItem
+import com.aipos.madogit.ui.components.ResponsiveContentContainer
 import com.aipos.madogit.ui.components.StatusBadge
 import com.aipos.madogit.ui.components.SyncButton
 import com.aipos.madogit.ui.components.formatRelativeTime
@@ -165,9 +167,13 @@ fun NotificationsScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        Column(
+        ResponsiveContentContainer(
+            maxWidth = 960.dp,
             modifier = Modifier.fillMaxSize()
         ) {
+            Column(
+                modifier = Modifier.fillMaxSize()
+            ) {
             // Header Bar
             Row(
                 modifier = Modifier
@@ -449,9 +455,10 @@ fun NotificationsScreen(
                                     },
                                     modifier = Modifier.animateItem()
                                 ) {
-                                    NotificationHistoryItem(
+                                    GitHubEventCard(
                                         notification = item,
-                                        onOpen = {
+                                        primaryActionLabel = "Open",
+                                        onOpenClick = {
                                             if (!item.isRead) {
                                                 viewModel.markNotificationRead(item.id)
                                             }
@@ -461,10 +468,10 @@ fun NotificationsScreen(
                                                 else "https://github.com/${item.repoFullName}"
                                             )
                                         },
-                                        onMarkRead = {
+                                        onMarkReadClick = {
                                             viewModel.markNotificationRead(item.id)
                                         },
-                                        onDelete = {
+                                        onDeleteClick = {
                                             viewModel.deleteNotification(item.id)
                                             coroutineScope.launch {
                                                 snackbarHostState.showSnackbar("Notification dismissed")
@@ -478,215 +485,14 @@ fun NotificationsScreen(
                 }
             }
         }
-
-        SnackbarHost(
-            hostState = snackbarHostState,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 16.dp)
-        )
     }
-}
 
-@Composable
-private fun NotificationHistoryItem(
-    notification: GitHubNotificationEntity,
-    onOpen: () -> Unit,
-    onMarkRead: () -> Unit,
-    onDelete: () -> Unit
-) {
-    val isUnread = !notification.isRead
-
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = if (isUnread) MaterialTheme.colorScheme.surfaceContainerHigh
-            else MaterialTheme.colorScheme.surfaceContainer
-        ),
-        shape = MaterialTheme.shapes.medium,
+    SnackbarHost(
+        hostState = snackbarHostState,
         modifier = Modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.medium)
-            .clickable { onOpen() }
-            .border(
-                width = if (isUnread) 1.5.dp else 1.dp,
-                color = if (isUnread) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-                else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
-                shape = MaterialTheme.shapes.medium
-            )
-            .testTag("notification_item_${notification.id}")
-    ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            // Header Row: Avatar, Repo, StatusBadge, Timestamp
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    // Pulsing / glowing unread accent indicator
-                    if (isUnread) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                    }
-
-                    // Author Avatar or Icon
-                    if (!notification.avatarUrl.isNullOrBlank()) {
-                        AsyncImage(
-                            model = notification.avatarUrl,
-                            contentDescription = notification.author,
-                            modifier = Modifier
-                                .size(18.dp)
-                                .clip(CircleShape)
-                                .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape),
-                            contentScale = ContentScale.Crop
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                    }
-
-                    Text(
-                        text = notification.repoFullName,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    StatusBadge(
-                        text = notification.eventType.replace('_', ' '),
-                        category = notification.category,
-                        actionState = notification.actionState
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                Text(
-                    text = formatRelativeTime(notification.timestamp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1
-                )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Notification Title
-            Text(
-                text = notification.title,
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = if (isUnread) FontWeight.Bold else FontWeight.Medium
-            )
-
-            // Notification Body
-            if (notification.body.isNotBlank()) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = notification.body,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Bottom Actions Row: Author and Buttons
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "@${notification.author}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Mark as Read Button
-                    if (isUnread) {
-                        FilledTonalButton(
-                            onClick = onMarkRead,
-                            shape = MaterialTheme.shapes.small,
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                            colors = ButtonDefaults.filledTonalButtonColors(
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                            ),
-                            modifier = Modifier
-                                .height(32.dp)
-                                .testTag("mark_read_${notification.id}")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Check,
-                                contentDescription = "Mark as read",
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Mark Read",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                    }
-
-                    // Open in GitHub Button
-                    OutlinedButton(
-                        onClick = onOpen,
-                        shape = MaterialTheme.shapes.small,
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            contentColor = MaterialTheme.colorScheme.primary
-                        ),
-                        modifier = Modifier
-                            .height(32.dp)
-                            .testTag("open_github_${notification.id}")
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                            contentDescription = "Open in GitHub",
-                            modifier = Modifier.size(13.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "Open",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-
-                    // Dismiss / Delete Button
-                    IconButton(
-                        onClick = onDelete,
-                        modifier = Modifier.size(26.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.DeleteOutline,
-                            contentDescription = "Delete notification",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
-            }
-        }
-    }
+            .align(Alignment.BottomCenter)
+            .padding(bottom = 16.dp)
+    )
 }
+}
+

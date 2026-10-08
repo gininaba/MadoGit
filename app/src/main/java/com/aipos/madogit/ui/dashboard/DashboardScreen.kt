@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -65,9 +66,11 @@ import com.aipos.madogit.data.database.entities.GitHubNotificationEntity
 import com.aipos.madogit.data.repository.SyncStatus
 import com.aipos.madogit.ui.MainViewModel
 import com.aipos.madogit.ui.components.EmptyStateView
+import com.aipos.madogit.ui.components.GitHubEventCard
 import com.aipos.madogit.ui.components.MadoPullToRefreshBox
 import com.aipos.madogit.ui.components.OfflineBanner
 import com.aipos.madogit.ui.components.RateLimitGauge
+import com.aipos.madogit.ui.components.ResponsiveContentContainer
 import com.aipos.madogit.ui.components.StatusBadge
 import com.aipos.madogit.ui.components.SyncButton
 import com.aipos.madogit.ui.components.formatRelativeTime
@@ -101,7 +104,7 @@ fun DashboardScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        ResponsiveContentContainer(maxWidth = 960.dp) {
             OfflineBanner(
                 isOffline = isOffline,
                 onRetry = { viewModel.triggerSync() }
@@ -122,7 +125,7 @@ fun DashboardScreen(
                         rateLimitInfo = rateLimitInfo,
                         isOffline = isOffline,
                         onManageReposClick = onNavigateToRepositories,
-                        onSignInClick = { viewModel.disconnect() }
+                        onSignInClick = onNavigateToRepositories
                     )
                 }
 
@@ -186,7 +189,7 @@ fun DashboardScreen(
                     }
                 } else {
                     items(recentNotifications, key = { it.id }) { notification ->
-                        TimelineEventCard(
+                        GitHubEventCard(
                             notification = notification,
                             onCardClick = {
                                 if (!notification.isRead) {
@@ -198,9 +201,20 @@ fun DashboardScreen(
                                     else "https://github.com/${notification.repoFullName}"
                                 )
                             },
-                            onMarkReadClick = {
-                                viewModel.markNotificationRead(notification.id)
+                            onMarkReadClick = if (!notification.isRead) {
+                                { viewModel.markNotificationRead(notification.id) }
+                            } else null,
+                            onOpenClick = {
+                                if (!notification.isRead) {
+                                    viewModel.markNotificationRead(notification.id)
+                                }
+                                openExternalUrl(
+                                    context,
+                                    if (notification.targetUrl.isNotBlank()) notification.targetUrl
+                                    else "https://github.com/${notification.repoFullName}"
+                                )
                             },
+                            testTagPrefix = "timeline_event_card",
                             modifier = Modifier.animateItem()
                         )
                     }
@@ -494,62 +508,113 @@ private fun ActivityMetricsGrid(
     onNavigateToNotifications: () -> Unit,
     onNavigateToAssistant: () -> Unit
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            MetricCard(
-                title = "Unread Alerts",
-                count = unreadCount,
-                icon = Icons.Default.Notifications,
-                iconColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                bgColor = MaterialTheme.colorScheme.primaryContainer,
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable { onNavigateToNotifications() }
-            )
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val isWide = maxWidth >= 600.dp
+        if (isWide) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                MetricCard(
+                    title = "Unread Alerts",
+                    count = unreadCount,
+                    icon = Icons.Default.Notifications,
+                    iconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    bgColor = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { onNavigateToNotifications() }
+                )
+                MetricCard(
+                    title = "Review Requests",
+                    count = pendingReviews,
+                    icon = Icons.Default.PlayArrow,
+                    iconColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    bgColor = MaterialTheme.colorScheme.secondaryContainer,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { onNavigateToAssistant() }
+                )
+                MetricCard(
+                    title = "Assigned Issues",
+                    count = assignedIssues,
+                    icon = Icons.Default.BugReport,
+                    iconColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                    bgColor = MaterialTheme.colorScheme.tertiaryContainer,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { onNavigateToAssistant() }
+                )
+                MetricCard(
+                    title = "Failed CI/CD",
+                    count = failedWorkflows,
+                    icon = Icons.Default.Error,
+                    iconColor = MaterialTheme.colorScheme.onErrorContainer,
+                    bgColor = MaterialTheme.colorScheme.errorContainer,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { onNavigateToAssistant() }
+                )
+            }
+        } else {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    MetricCard(
+                        title = "Unread Alerts",
+                        count = unreadCount,
+                        icon = Icons.Default.Notifications,
+                        iconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        bgColor = MaterialTheme.colorScheme.primaryContainer,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { onNavigateToNotifications() }
+                    )
 
-            MetricCard(
-                title = "Review Requests",
-                count = pendingReviews,
-                icon = Icons.Default.PlayArrow,
-                iconColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                bgColor = MaterialTheme.colorScheme.secondaryContainer,
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable { onNavigateToAssistant() }
-            )
-        }
+                    MetricCard(
+                        title = "Review Requests",
+                        count = pendingReviews,
+                        icon = Icons.Default.PlayArrow,
+                        iconColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                        bgColor = MaterialTheme.colorScheme.secondaryContainer,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { onNavigateToAssistant() }
+                    )
+                }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            MetricCard(
-                title = "Assigned Issues",
-                count = assignedIssues,
-                icon = Icons.Default.BugReport,
-                iconColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                bgColor = MaterialTheme.colorScheme.tertiaryContainer,
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable { onNavigateToAssistant() }
-            )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    MetricCard(
+                        title = "Assigned Issues",
+                        count = assignedIssues,
+                        icon = Icons.Default.BugReport,
+                        iconColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                        bgColor = MaterialTheme.colorScheme.tertiaryContainer,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { onNavigateToAssistant() }
+                    )
 
-            MetricCard(
-                title = "Failed CI/CD",
-                count = failedWorkflows,
-                icon = Icons.Default.Error,
-                iconColor = MaterialTheme.colorScheme.onErrorContainer,
-                bgColor = MaterialTheme.colorScheme.errorContainer,
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable { onNavigateToAssistant() }
-            )
+                    MetricCard(
+                        title = "Failed CI/CD",
+                        count = failedWorkflows,
+                        icon = Icons.Default.Error,
+                        iconColor = MaterialTheme.colorScheme.onErrorContainer,
+                        bgColor = MaterialTheme.colorScheme.errorContainer,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { onNavigateToAssistant() }
+                    )
+                }
+            }
         }
     }
 }
@@ -605,190 +670,6 @@ private fun MetricCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-            }
-        }
-    }
-}
-
-@Composable
-fun TimelineEventCard(
-    notification: GitHubNotificationEntity,
-    onCardClick: () -> Unit,
-    onMarkReadClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val isUnread = !notification.isRead
-
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = if (isUnread) MaterialTheme.colorScheme.surfaceContainerHigh
-            else MaterialTheme.colorScheme.surfaceContainer
-        ),
-        shape = MaterialTheme.shapes.medium,
-        border = BorderStroke(
-            width = if (isUnread) 1.5.dp else 1.dp,
-            color = if (isUnread) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
-        ),
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.medium)
-            .clickable { onCardClick() }
-            .testTag("timeline_event_card_${notification.id}")
-    ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            // Header Row: Unread dot, Avatar, Repo, StatusBadge, Timestamp
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    if (isUnread) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                    }
-
-                    if (!notification.avatarUrl.isNullOrBlank()) {
-                        AsyncImage(
-                            model = notification.avatarUrl,
-                            contentDescription = notification.author,
-                            modifier = Modifier
-                                .size(18.dp)
-                                .clip(CircleShape)
-                                .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape),
-                            contentScale = ContentScale.Crop
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                    }
-
-                    Text(
-                        text = notification.repoFullName,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    StatusBadge(
-                        text = notification.eventType.replace('_', ' '),
-                        category = notification.category,
-                        actionState = notification.actionState
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                Text(
-                    text = formatRelativeTime(notification.timestamp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1
-                )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = notification.title,
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = if (isUnread) FontWeight.Bold else FontWeight.Medium,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-
-            if (notification.body.isNotBlank()) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = notification.body,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "@${notification.author}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (isUnread) {
-                        FilledTonalButton(
-                            onClick = onMarkReadClick,
-                            shape = MaterialTheme.shapes.small,
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                            colors = ButtonDefaults.filledTonalButtonColors(
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                            ),
-                            modifier = Modifier
-                                .height(32.dp)
-                                .testTag("mark_read_${notification.id}")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Check,
-                                contentDescription = "Mark as read",
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Mark Read",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                    }
-
-                    OutlinedButton(
-                        onClick = onCardClick,
-                        shape = MaterialTheme.shapes.small,
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            contentColor = MaterialTheme.colorScheme.primary
-                        ),
-                        modifier = Modifier
-                            .height(32.dp)
-                            .testTag("open_github_${notification.id}")
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                            contentDescription = "Open in GitHub",
-                            modifier = Modifier.size(13.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "Open",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
             }
         }
     }
