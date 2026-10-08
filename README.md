@@ -15,6 +15,7 @@
 </p>
 
 <p align="center">
+  <a href="RELEASE_NOTES.md"><img src="https://img.shields.io/badge/Release-v0.5.0--beta-blue?style=flat-square" alt="Release v0.5.0-beta" /></a>
   <img src="https://img.shields.io/badge/Status-Experimental-orange?style=flat-square" alt="Status" />
   <img src="https://img.shields.io/badge/Platform-Android_7.0+_(API_24+)-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Platform" />
   <img src="https://img.shields.io/badge/Target_SDK-36_(Android_16)-34A853?style=flat-square" alt="Target SDK" />
@@ -327,6 +328,7 @@ Comprehensive technical documentation is maintained in the `docs/` directory:
 - [Sync Engine & Rate Limiting](docs/sync-and-rate-limiting.md): Polling algorithm, HTTP ETag caching protocol, deduplication hashing, and WorkManager Doze handling.
 - [Authentication & Security](docs/authentication-and-security.md): Threat model, Android Keystore encryption, OAuth 2.0 flow, and permission justifications.
 - [Developer Setup & Contributing](docs/setup-and-contribution.md): Environment configuration, coding conventions, Jetpack Compose standards, and contribution guidelines.
+- [Release Notes & Changelog](RELEASE_NOTES.md): Complete chronological release history, feature highlights, and integrity fixes.
 
 ---
 
@@ -372,6 +374,7 @@ madogit/
 ├── build.gradle.kts                  # Root Gradle build script
 ├── settings.gradle.kts               # Project configuration
 ├── LICENSE                           # Apache License 2.0
+├── RELEASE_NOTES.md                  # Complete version history & release notes
 └── README.md                         # Main repository documentation
 ```
 

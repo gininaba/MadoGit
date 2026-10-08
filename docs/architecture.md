@@ -87,6 +87,8 @@ The presentation layer is built entirely in **Jetpack Compose** using declarativ
 - **Common Gesture Components**:
   - `MadoPullToRefreshBox`: Wraps official Compose Material 3 `PullToRefreshBox` with `PullToRefreshDefaults.Indicator` styled in dynamic primary tones across all primary feeds.
   - `MadoSwipeToDismissItem`: Wraps M3 `SwipeToDismissBox` with directional haptic feedback, dual action colored surfaces (primary for read, error for dismiss), and snackbar undo confirmation.
+  - `GitHubEventCard`: Unified, accessible event card across Dashboard, Inbox, and Assistant feeds with standardized 36dp touch targets, unread badges, repository and event category metadata, and integrated browser intent routing.
+  - `ResponsiveContentContainer`: Layout wrapper enforcing optimal reading widths (960dp content, 840dp settings, 540dp auth) across tablets, foldables, and landscape orientations.
   - `RateLimitGauge`: Custom progress bar and countdown widget for real-time GitHub API rate-limit monitoring.
   - `LanguageDot`: Colored circle indicator mapping official GitHub programming language colors.
 - **Screen Implementations**:

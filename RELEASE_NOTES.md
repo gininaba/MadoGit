@@ -1,5 +1,45 @@
 # MadoGit Release Notes
 
+## MadoGit v0.5.0-beta (Responsive Architecture, Component Unification & Build Hygiene)
+
+This release delivers cross-device responsive UI architecture for tablet and landscape form factors, eliminates component duplication across the UI presentation layer, optimizes garbage collection overhead during rapid scrolling, resolves accessibility focus and touch target issues, streamlines ViewModel reactivity, and hardens repository hygiene for open-source distribution.
+
+> **Notice: Experimental Release**  
+> This is an active beta release intended for dogfooding, testing, and feedback. Features, UI components, and internal schemas are continuously evolving.
+
+---
+
+### Highlights & Features in v0.5.0-beta
+
+#### Component Unification & Deduplication
+- **Unified Event Card (`GitHubEventCard`)**: Replaced triplicate event presentation implementations (`TimelineEventCard`, `NotificationHistoryItem`, and `ActionableTaskCard`) with a single, highly reusable, accessible, and parameterized `GitHubEventCard` in `CommonComponents.kt`, eliminating hundreds of lines of duplicate UI logic.
+- **Consistent Event Action Handling**: Unified card click, web browser launch, swipe-to-read, and triage action flows across Dashboard, Notifications, and Assistant screens.
+
+#### Responsive & Adaptive UI Architecture
+- **Responsive Content Container**: Introduced `ResponsiveContentContainer` composable enforcing optimal maximum reading and interaction widths across all core screens (`960.dp` for dashboard, inbox, and repositories; `840.dp` for settings; `540.dp` for onboarding and authentication forms) to prevent visual stretching on tablets, foldables, and landscape orientations.
+- **Adaptive Activity Metrics Grid**: Replaced hardcoded dashboard column counts with a dynamic layout adapting between a 2x2 grid on compact mobile screens and a 4-column single row on screen widths of 600dp and above.
+
+#### Accessibility & Touch Target Standards
+- **Standardized Touch Targets**: Increased interactive icon button dimensions to a minimum of 36dp with appropriate padding to meet Android touch target accessibility guidelines.
+- **Resolved Dual-Clickable Accessibility Conflicts**: Fixed compound setting rows in `SettingsComponents.kt` by assigning explicit `Role.Checkbox` to clickable container rows while decoupling inner checkbox listeners (`onCheckedChange = null`), preventing conflicting screen reader announcements.
+
+#### Memory, Garbage Collection & Performance Optimizations
+- **ThreadLocal Date Formatter Caching**: Eliminated high-frequency `SimpleDateFormat` object allocation churn during list scrolling by introducing thread-safe `ThreadLocal` formatters in `formatRelativeTime()` and `GitHubRepository.parseIsoDate()`.
+- **Direct GPU Layer Animation**: Replaced recomposing `.scale()` and `.alpha()` modifiers on the splash screen logo with `.graphicsLayer { ... }` lambdas, executing scale and fade animations entirely on the GPU render thread without triggering Compose recomposition sweeps.
+- **Single-Pass Repository Filtering**: Optimized repository list filtering in `RepositoriesScreen.kt` using memoized single-pass evaluation instead of 4 sequential collection filtering passes.
+- **Reactive StateFlow Optimization**: Removed redundant imperative Room fetch invocations in `MainViewModel.kt` mutation functions, allowing Room Flow streams to drive UI updates reactively.
+
+#### Critical Bug Fixes
+- **Dashboard Disconnect Remediation**: Fixed a critical logic defect in `DashboardScreen.kt` where tapping "Sign In" on an unauthenticated `AccountCard` erroneously invoked `viewModel.disconnect()`.
+- **Sync Button Visual State**: Corrected `SyncButton` idle icon tint from `primary` to `onSurfaceVariant` for improved visual hierarchy.
+
+#### Build & Repository Hygiene
+- **Repository De-bloating**: Removed 2.34 MB of duplicate screenshots from the repository root, retaining semantic assets strictly under `docs/assets/screenshots/`.
+- **Obsolete Artifact Purging**: Deleted unused Google Project IDX `metadata.json` and untracked internal agent planning documents via `.gitignore`.
+- **Build Configuration Streamlining**: Removed unused Google Services Gradle plugin and Firebase BOM dependencies, eliminating the missing `google-services.json` build notice.
+
+---
+
 ## MadoGit v0.4.0-beta (Data Integrity Hardening, Lifecycle Sync & UI Stabilization)
 
 This release delivers critical data integrity hardening, lifecycle-driven background synchronization, security enhancements, and UI state stabilization across the application. It resolves key runtime bugs in notification deduplication, repository monitoring state preservation, pull request transition tracking, and WorkManager retry orchestration, backed by a comprehensive 60-test verification suite.
