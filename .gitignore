@@ -33,7 +33,10 @@ my-upload-key.jks
 .vscode/
 .DS_Store
 */.DS_Store
+**/.DS_Store
 Thumbs.db
 
 # Agent
 .agent/
+docs/plans/
+

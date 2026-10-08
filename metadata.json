@@ -1,6 +1,0 @@
-{
-  "name": "MadoGit",
-  "description": "Smart GitHub notification assistant monitoring pull requests, issues, actions, and releases with local persistence and background sync.",
-  "requestFramePermissions": [],
-  "majorCapabilities": []
-}
